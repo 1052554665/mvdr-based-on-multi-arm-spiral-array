@@ -39,7 +39,6 @@ exportgraphics(gcf, 'Microphone Array Geometry.pdf', ...
 %% ========== 2. Room, RIR and signals parameters ==========
 c = 340;
 fs = 16000;
-t = (0:1/fs:1-1/fs)';
 SNR = 30;          % dB
 % INR = 5;          % dB (interference relative to target amplitude)
 nsample = 4096;    % RIR length
@@ -47,6 +46,17 @@ nsample = 4096;    % RIR length
 % source 3D positions
 s_target = [2.5 1 4];   % used for RIR generation (m)
 s_interf  = [2.5 3 4];
+
+% optional GPU acceleration (requires Parallel Computing Toolbox)
+use_gpu = true;
+gpu_ok = false;
+if use_gpu && gpuDeviceCount > 0
+    g = gpuDevice;
+    gpu_ok = true;
+    fprintf('GPU enabled: %s\n', g.Name);
+else
+    fprintf('GPU not used. Running on CPU.\n');
+end
 
 %% ====================== 可视化房间、声源和麦克风阵列位置 ======================
 figure(2); clf;
@@ -256,6 +266,12 @@ for m = 1:Nmic
         'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
 end
 
+if gpu_ok
+    S = gpuArray(S);
+    S_tar = gpuArray(S_tar);
+    S_intnoi = gpuArray(S_intnoi);
+end
+
 %% ===== Far-field DOA unit vectors (from source position) =====
 u_target = (s_target - r_center).';
 u_target = u_target / norm(u_target);
@@ -265,8 +281,13 @@ u_interf = u_interf / norm(u_interf);
 
 
 %% ========== 7. Far-field steering vector construction ==========
-a_target = zeros(Nmic, Fbins);
-a_interf = zeros(Nmic, Fbins);
+if gpu_ok
+    a_target = gpuArray.zeros(Nmic, Fbins);
+    a_interf = gpuArray.zeros(Nmic, Fbins);
+else
+    a_target = zeros(Nmic, Fbins);
+    a_interf = zeros(Nmic, Fbins);
+end
 
 for k = 1:Fbins
     freq = F(k);
@@ -275,8 +296,21 @@ for k = 1:Fbins
     end
 
     for m = 1:Nmic
-        phase_t = -2*pi*freq/c * ((mic_pos(m,:) - r_center) * u_target);
-        phase_i = -2*pi*freq/c * ((mic_pos(m,:) - r_center) * u_interf);
+        if use_farfield_target
+            phase_t = -2*pi*freq/c * ((mic_pos(m,:) - r_center) * u_target);
+        else
+            d_m_t = norm(s_target - mic_pos(m,:));
+            d_ref_t = norm(s_target - r_center);
+            phase_t = -2*pi*freq/c * (d_m_t - d_ref_t);
+        end
+
+        if use_farfield_interf
+            phase_i = -2*pi*freq/c * ((mic_pos(m,:) - r_center) * u_interf);
+        else
+            d_m_i = norm(s_interf - mic_pos(m,:));
+            d_ref_i = norm(s_interf - r_center);
+            phase_i = -2*pi*freq/c * (d_m_i - d_ref_i);
+        end
 
         a_target(m,k) = exp(1j * phase_t);
         a_interf(m,k) = exp(1j * phase_i);
@@ -287,12 +321,22 @@ for k = 1:Fbins
     a_interf(:,k) = a_interf(:,k) / norm(a_interf(:,k));
 end
 
-fprintf('Using FAR-FIELD (plane-wave) steering vectors.\n');
+if use_farfield_target && use_farfield_interf
+    fprintf('Using FAR-FIELD steering vectors for target and interference.\n');
+elseif ~use_farfield_target && ~use_farfield_interf
+    fprintf('Using NEAR-FIELD steering vectors for target and interference.\n');
+else
+    fprintf('Using MIXED steering vectors (target/interference far-field flags differ).\n');
+end
 
 
 %% ========== 8. Memory-safe per-frame MVDR (diagonal loading adapted) ==========
 fprintf('Running MVDR (per-frequency, per-frame) ...\n');
-Yf = zeros(Fbins, Tframes);   % complex freq x time result
+if gpu_ok
+    Yf = gpuArray.zeros(Fbins, Tframes);   % complex freq x time result
+else
+    Yf = zeros(Fbins, Tframes);   % complex freq x time result
+end
 
 % Tunable parameters (you can try Mavg=21/epsilon=1e-2, or smaller)
 Mavg = 21;                     % averaging window for covariance (frames)
@@ -302,48 +346,77 @@ epsilon = 1e-2;                % base loading (relative scale)
 shrink_alpha = 0.05;           % 0..0.3 typical; 0 means no shrinkage
 
 tic
-%% 对每个频率，用所有时间帧估计一个协方差矩阵
+%% 对每个频率和时间帧，用局部滑窗估计协方差矩阵
+if gpu_ok
+    W_mvdr = gpuArray.zeros(Nmic, Fbins, Tframes);
+else
+    W_mvdr = zeros(Nmic, Fbins, Tframes);
+end
 for k = 1:f_limit
     Xkf = squeeze(S(k,:,:)).';   % Nmic x Tframes
-    Rxx = (Xkf * Xkf') / Tframes;
-
-    Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic);
-    w = Rxx \ a_target(:,k);
-    w = w / (a_target(:,k)' * w);
-
-    Yf(k,:) = w' * Xkf;
-end
-toc
-%% ========== Apply SAME MVDR weights to target / int+noise ==========
-Y_tar = zeros(Fbins, Tframes);
-Y_intnoi = zeros(Fbins, Tframes);
-
-for k = 1:f_limit
-    Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
-    Xkf_intnoi = squeeze(S_intnoi(k,:,:)).';  % Nmic x Tframes
-
-    % Recompute Rxx EXACTLY the same way
-    Xkf_all = squeeze(S(k,:,:)).';
-    Rxx = (Xkf_all * Xkf_all') / Tframes;
-    Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic);
-
     at = a_target(:,k);
     if norm(at) < 1e-12
         continue;
     end
 
-    w = Rxx \ at;
-    w = w / (at' * w);
+    for n = 1:Tframes
+        t1 = max(1, n - floor(Mavg/2));
+        t2 = min(Tframes, n + floor(Mavg/2));
+        Xloc = Xkf(:, t1:t2);
 
-    Y_tar(k,:)    = w' * Xkf_tar;
-    Y_intnoi(k,:) = w' * Xkf_intnoi;
+        Rxx = (Xloc * Xloc') / size(Xloc,2);
+
+        if shrink_alpha > 0
+            mu = trace(Rxx) / Nmic;
+            Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
+        end
+
+        Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
+        w = Rxx \ at;
+        denom = at' * w;
+        if abs(denom) < 1e-12
+            w = zeros(Nmic,1, 'like', at);
+        else
+            w = w / denom;
+        end
+
+        W_mvdr(:,k,n) = w;
+        Yf(k,n) = w' * Xkf(:,n);
+    end
+end
+toc
+%% ========== Apply SAME MVDR weights to target / int+noise ==========
+if gpu_ok
+    Y_tar = gpuArray.zeros(Fbins, Tframes);
+    Y_intnoi = gpuArray.zeros(Fbins, Tframes);
+else
+    Y_tar = zeros(Fbins, Tframes);
+    Y_intnoi = zeros(Fbins, Tframes);
+end
+
+for k = 1:f_limit
+    Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
+    Xkf_intnoi = squeeze(S_intnoi(k,:,:)).';  % Nmic x Tframes
+    for n = 1:Tframes
+        w = W_mvdr(:,k,n);
+        Y_tar(k,n)    = w' * Xkf_tar(:,n);
+        Y_intnoi(k,n) = w' * Xkf_intnoi(:,n);
+    end
+end
+
+if gpu_ok
+    % gather once before diagnostics/ISTFT to avoid repeated host-device sync
+    Yf = gather(Yf);
+    Y_tar = gather(Y_tar);
+    Y_intnoi = gather(Y_intnoi);
+    S = gather(S);
+    a_target = gather(a_target);
 end
 
 
 %% ========== Diagnostic for 2 kHz and Rxx (place right after MVDR loop, before ISTFT) ==========
 % find freq bin for 2kHz and 1kHz
 [~, k2] = min(abs(F - 2000));
-[~, k1] = min(abs(F - 1000));
 
 % pick a robust frame interval (middle 30% of frames) for Rxx estimate
 numFrames = size(Yf,2);
@@ -360,7 +433,7 @@ t2_diag = min(t2_diag, size(Xkf_k2,2));
 Xloc_diag = Xkf_k2(:, t1_diag:t2_diag);
 Rxx_diag = (Xloc_diag * Xloc_diag') / size(Xloc_diag,2);
 reg_diag = epsilon * trace(Rxx_diag) / Nmic;
-Rxx_diag = Rxx_diag + reg_diag * eye(Nmic);
+Rxx_diag = Rxx_diag + reg_diag * eye(Nmic, 'like', Rxx_diag);
 
 % eigenspectrum
 [~, D] = eig(Rxx_diag);
@@ -378,7 +451,12 @@ center_frame = round(numFrames/2);
 t1c = max(1, center_frame - floor(Mavg/2));
 t2c = min(numFrames, center_frame + floor(Mavg/2));
 Xlocc = Xkf_k2(:, t1c:t2c);
-Rxxc = (Xlocc * Xlocc') / size(Xlocc,2) + (epsilon * trace(Xlocc * Xlocc') / Nmic) * eye(Nmic);
+Rxxc = (Xlocc * Xlocc') / size(Xlocc,2);
+if shrink_alpha > 0
+    mu_c = trace(Rxxc) / Nmic;
+    Rxxc = (1 - shrink_alpha) * Rxxc + shrink_alpha * mu_c * eye(Nmic, 'like', Rxxc);
+end
+Rxxc = Rxxc + (epsilon * trace(Rxxc) / Nmic) * eye(Nmic, 'like', Rxxc);
 
 at_k2 = a_target(:, k2);
 w_diag = Rxxc \ at_k2;
