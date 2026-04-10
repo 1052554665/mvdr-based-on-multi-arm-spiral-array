@@ -58,6 +58,18 @@ else
     fprintf('GPU not used. Running on CPU.\n');
 end
 
+% speed options
+use_parallel_rir = true;   % parallelize per-mic RIR generation when possible
+mvdr_frame_stride = 2;     % update MVDR weights every N frames (1 = full update)
+
+% false: one weight per freq (fast), true: per-frame adaptive
+if ~exist('mvdr_use_time_varying', 'var')
+    mvdr_use_time_varying = false;
+end
+
+mvdr_fmax_hz = 4000;             % lower upper band for MVDR to reduce complexity
+mvdr_progress_step = 20;         % print progress every N frequency bins
+
 %% ====================== 可视化房间、声源和麦克风阵列位置 ======================
 figure(2); clf;
 hold on; grid on; axis equal;
@@ -154,23 +166,71 @@ hp_filter = true;
 h_target = zeros(Nmic, nsample);    % 初始化目标和干扰的RIR矩阵
 h_interf = zeros(Nmic, nsample);
 
+% beta=0时只有直达声，RIR长度可安全缩短以加速
+if beta == 0
+    max_dist = max([vecnorm(mic_pos - s_target,2,2); vecnorm(mic_pos - s_interf,2,2)]);
+    nsample_direct = max(256, ceil(max_dist / c * fs) + 128);
+    nsample_use = min(nsample, nsample_direct);
+else
+    nsample_use = nsample;
+end
+
+if nsample_use < nsample
+    h_target = zeros(Nmic, nsample_use);
+    h_interf = zeros(Nmic, nsample_use);
+    fprintf('Using shortened RIR length: %d (from %d).\n', nsample_use, nsample);
+end
+
 fprintf('Generating RIRs for %d microphones (this may take a while)...\n', Nmic);
-for m = 1:Nmic      % 循环为每个麦克风生成目标和干扰的RIR，并确保为行向量后存储。
-    rm = mic_pos(m,:);
-    ht = rir_generator(c, fs, rm, s_target, L, beta, nsample, mtype, order, dim, orientation, hp_filter);
-    hi = rir_generator(c, fs, rm, s_interf, L, beta, nsample, mtype, order, dim, orientation, hp_filter);
-    % ensure row vectors
-    if iscolumn(ht), ht = ht.'; end
-    if iscolumn(hi), hi = hi.'; end
-    h_target(m,:) = ht;
-    h_interf(m,:)  = hi;
+if use_parallel_rir && license('test', 'Distrib_Computing_Toolbox')
+    p = gcp('nocreate');
+    if isempty(p)
+        try
+            parpool('Processes');
+        catch ME
+            msg = ['Failed to start process-based pool: ' char(ME.message) '. Falling back to serial RIR.'];
+            warning('rir:pool', '%s', msg);
+            use_parallel_rir = false;
+        end
+    elseif contains(lower(class(p)), 'thread')
+        delete(p);
+        try
+            parpool('Processes');
+        catch ME
+            msg = ['Failed to switch to process-based pool: ' char(ME.message) '. Falling back to serial RIR.'];
+            warning('rir:pool', '%s', msg);
+            use_parallel_rir = false;
+        end
+    end
+end
+
+if use_parallel_rir && license('test', 'Distrib_Computing_Toolbox')
+    parfor m = 1:Nmic      % 并行按麦克风生成RIR
+        rm = mic_pos(m,:);
+        ht = rir_generator(c, fs, rm, s_target, L, beta, nsample_use, mtype, order, dim, orientation, hp_filter);
+        hi = rir_generator(c, fs, rm, s_interf, L, beta, nsample_use, mtype, order, dim, orientation, hp_filter);
+        if iscolumn(ht), ht = ht.'; end
+        if iscolumn(hi), hi = hi.'; end
+        h_target(m,:) = ht;
+        h_interf(m,:)  = hi;
+    end
+else
+    for m = 1:Nmic      % 循环为每个麦克风生成目标和干扰的RIR，并确保为行向量后存储。
+        rm = mic_pos(m,:);
+        ht = rir_generator(c, fs, rm, s_target, L, beta, nsample_use, mtype, order, dim, orientation, hp_filter);
+        hi = rir_generator(c, fs, rm, s_interf, L, beta, nsample_use, mtype, order, dim, orientation, hp_filter);
+        if iscolumn(ht), ht = ht.'; end
+        if iscolumn(hi), hi = hi.'; end
+        h_target(m,:) = ht;
+        h_interf(m,:)  = hi;
+    end
 end
 fprintf('RIR generation done.\n');
 
 %% ========== 5. Generate source signals and convolve with RIR (do NOT add manual delays) ==========
 %% ========== Load real source signals (.wav) ==========
 [target_sig, fs_t] = audioread('Normal_part92.wav');
-[interf_sig, fs_i] = audioread('振安1#反_part46.wav');
+[interf_sig, fs_i] = audioread('7061-6-0-0.wav');
 
 % mono conversion
 if size(target_sig,2) > 1
@@ -249,8 +309,8 @@ end
 Fbins = length(F);  % 获取频率点和时间帧
 Tframes = length(T);
 
-% limit up to f_limit (0-5kHz)
-f_limit = find(F <= 5000, 1, 'last');   % 找到5000Hz以下的频率索引
+% limit up to f_limit (0-mvdr_fmax_hz)
+f_limit = find(F <= mvdr_fmax_hz, 1, 'last');
 fprintf('STFT computed: %d freq bins, %d time frames. Using bins 1..%d up to %.1f Hz.\n', Fbins, Tframes, f_limit, F(f_limit));
 
 
@@ -334,8 +394,12 @@ end
 fprintf('Running MVDR (per-frequency, per-frame) ...\n');
 if gpu_ok
     Yf = gpuArray.zeros(Fbins, Tframes);   % complex freq x time result
+    Y_tar = gpuArray.zeros(Fbins, Tframes);
+    Y_intnoi = gpuArray.zeros(Fbins, Tframes);
 else
     Yf = zeros(Fbins, Tframes);   % complex freq x time result
+    Y_tar = zeros(Fbins, Tframes);
+    Y_intnoi = zeros(Fbins, Tframes);
 end
 
 % Tunable parameters (you can try Mavg=21/epsilon=1e-2, or smaller)
@@ -347,30 +411,53 @@ shrink_alpha = 0.05;           % 0..0.3 typical; 0 means no shrinkage
 
 tic
 %% 对每个频率和时间帧，用局部滑窗估计协方差矩阵
-if gpu_ok
-    W_mvdr = gpuArray.zeros(Nmic, Fbins, Tframes);
-else
-    W_mvdr = zeros(Nmic, Fbins, Tframes);
-end
 for k = 1:f_limit
     Xkf = squeeze(S(k,:,:)).';   % Nmic x Tframes
+    Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
+    Xkf_intnoi = squeeze(S_intnoi(k,:,:)).';  % Nmic x Tframes
     at = a_target(:,k);
     if norm(at) < 1e-12
         continue;
     end
 
-    for n = 1:Tframes
-        t1 = max(1, n - floor(Mavg/2));
-        t2 = min(Tframes, n + floor(Mavg/2));
-        Xloc = Xkf(:, t1:t2);
+    if mvdr_use_time_varying
+        w_last = zeros(Nmic,1, 'like', at);
+        for n = 1:Tframes
+            % 按步长更新权重，其余帧复用上一次权重以降低求解次数
+            if n == 1 || mod(n-1, mvdr_frame_stride) == 0
+                t1 = max(1, n - floor(Mavg/2));
+                t2 = min(Tframes, n + floor(Mavg/2));
+                Xloc = Xkf(:, t1:t2);
 
-        Rxx = (Xloc * Xloc') / size(Xloc,2);
+                Rxx = (Xloc * Xloc') / size(Xloc,2);
 
+                if shrink_alpha > 0
+                    mu = trace(Rxx) / Nmic;
+                    Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
+                end
+
+                Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
+                w = Rxx \ at;
+                denom = at' * w;
+                if abs(denom) < 1e-12
+                    w = zeros(Nmic,1, 'like', at);
+                else
+                    w = w / denom;
+                end
+                w_last = w;
+            end
+
+            Yf(k,n) = w_last' * Xkf(:,n);
+            Y_tar(k,n) = w_last' * Xkf_tar(:,n);
+            Y_intnoi(k,n) = w_last' * Xkf_intnoi(:,n);
+        end
+    else
+        % fast mode: one covariance/weight per frequency bin
+        Rxx = (Xkf * Xkf') / Tframes;
         if shrink_alpha > 0
             mu = trace(Rxx) / Nmic;
             Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
         end
-
         Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
         w = Rxx \ at;
         denom = at' * w;
@@ -380,29 +467,16 @@ for k = 1:f_limit
             w = w / denom;
         end
 
-        W_mvdr(:,k,n) = w;
-        Yf(k,n) = w' * Xkf(:,n);
+        Yf(k,:) = w' * Xkf;
+        Y_tar(k,:) = w' * Xkf_tar;
+        Y_intnoi(k,:) = w' * Xkf_intnoi;
+    end
+
+    if mod(k, mvdr_progress_step) == 0 || k == f_limit
+        fprintf('MVDR progress: %d/%d bins (%.1f%%), elapsed %.1fs\n', k, f_limit, 100*k/f_limit, toc);
     end
 end
 toc
-%% ========== Apply SAME MVDR weights to target / int+noise ==========
-if gpu_ok
-    Y_tar = gpuArray.zeros(Fbins, Tframes);
-    Y_intnoi = gpuArray.zeros(Fbins, Tframes);
-else
-    Y_tar = zeros(Fbins, Tframes);
-    Y_intnoi = zeros(Fbins, Tframes);
-end
-
-for k = 1:f_limit
-    Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
-    Xkf_intnoi = squeeze(S_intnoi(k,:,:)).';  % Nmic x Tframes
-    for n = 1:Tframes
-        w = W_mvdr(:,k,n);
-        Y_tar(k,n)    = w' * Xkf_tar(:,n);
-        Y_intnoi(k,n) = w' * Xkf_intnoi(:,n);
-    end
-end
 
 if gpu_ok
     % gather once before diagnostics/ISTFT to avoid repeated host-device sync
