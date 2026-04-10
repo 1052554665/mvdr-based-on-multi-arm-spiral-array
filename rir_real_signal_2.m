@@ -68,7 +68,11 @@ if ~exist('mvdr_use_time_varying', 'var')
 end
 
 mvdr_fmax_hz = 4000;             % lower upper band for MVDR to reduce complexity
+mvdr_fmin_hz = 300;              % very low frequencies have weak spatial selectivity
 mvdr_progress_step = 20;         % print progress every N frequency bins
+if ~exist('use_oracle_intnoi_cov', 'var')
+    use_oracle_intnoi_cov = true;    % true: use interference+noise covariance (debug upper bound)
+end
 
 %% ====================== 可视化房间、声源和麦克风阵列位置 ======================
 figure(2); clf;
@@ -230,7 +234,7 @@ fprintf('RIR generation done.\n');
 %% ========== 5. Generate source signals and convolve with RIR (do NOT add manual delays) ==========
 %% ========== Load real source signals (.wav) ==========
 [target_sig, fs_t] = audioread('Normal_part92.wav');
-[interf_sig, fs_i] = audioread('7061-6-0-0.wav');
+[interf_sig, fs_i] = audioread('sine_wave.wav');
 
 % mono conversion
 if size(target_sig,2) > 1
@@ -309,9 +313,17 @@ end
 Fbins = length(F);  % 获取频率点和时间帧
 Tframes = length(T);
 
-% limit up to f_limit (0-mvdr_fmax_hz)
+% limit up to f_limit (mvdr_fmin_hz-mvdr_fmax_hz)
+f_start = find(F >= mvdr_fmin_hz, 1, 'first');
 f_limit = find(F <= mvdr_fmax_hz, 1, 'last');
-fprintf('STFT computed: %d freq bins, %d time frames. Using bins 1..%d up to %.1f Hz.\n', Fbins, Tframes, f_limit, F(f_limit));
+if isempty(f_start), f_start = 1; end
+if isempty(f_limit), f_limit = Fbins; end
+if f_start > f_limit
+    f_start = 1;
+    f_limit = min(Fbins, find(F <= 5000, 1, 'last'));
+end
+fprintf('STFT computed: %d freq bins, %d time frames. MVDR bins %d..%d (%.1f-%.1f Hz).\n', ...
+    Fbins, Tframes, f_start, f_limit, F(f_start), F(f_limit));
 
 
 %% ========== STFT of target-only and interference+noise (for SNR eval) ==========
@@ -392,29 +404,29 @@ end
 
 %% ========== 8. Memory-safe per-frame MVDR (diagonal loading adapted) ==========
 fprintf('Running MVDR (per-frequency, per-frame) ...\n');
-if gpu_ok
-    Yf = gpuArray.zeros(Fbins, Tframes);   % complex freq x time result
-    Y_tar = gpuArray.zeros(Fbins, Tframes);
-    Y_intnoi = gpuArray.zeros(Fbins, Tframes);
-else
-    Yf = zeros(Fbins, Tframes);   % complex freq x time result
-    Y_tar = zeros(Fbins, Tframes);
-    Y_intnoi = zeros(Fbins, Tframes);
-end
+% initialize with reference-mic passthrough to avoid zeroing unprocessed bins
+Yf = squeeze(S(:,:,ref_mic));
+Y_tar = squeeze(S_tar(:,:,ref_mic));
+Y_intnoi = squeeze(S_intnoi(:,:,ref_mic));
 
 % Tunable parameters (you can try Mavg=21/epsilon=1e-2, or smaller)
 Mavg = 21;                     % averaging window for covariance (frames)
-epsilon = 1e-2;                % base loading (relative scale)
+epsilon = 1e-3;                % base loading (relative scale)
 
 % optional shrinkage factor for additional stability (set 0 to disable)
 shrink_alpha = 0.05;           % 0..0.3 typical; 0 means no shrinkage
 
 tic
 %% 对每个频率和时间帧，用局部滑窗估计协方差矩阵
-for k = 1:f_limit
+for k = f_start:f_limit
     Xkf = squeeze(S(k,:,:)).';   % Nmic x Tframes
     Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
     Xkf_intnoi = squeeze(S_intnoi(k,:,:)).';  % Nmic x Tframes
+    if use_oracle_intnoi_cov
+        Xkf_cov = Xkf_intnoi;
+    else
+        Xkf_cov = Xkf;
+    end
     at = a_target(:,k);
     if norm(at) < 1e-12
         continue;
@@ -427,7 +439,7 @@ for k = 1:f_limit
             if n == 1 || mod(n-1, mvdr_frame_stride) == 0
                 t1 = max(1, n - floor(Mavg/2));
                 t2 = min(Tframes, n + floor(Mavg/2));
-                Xloc = Xkf(:, t1:t2);
+                Xloc = Xkf_cov(:, t1:t2);
 
                 Rxx = (Xloc * Xloc') / size(Xloc,2);
 
@@ -453,7 +465,7 @@ for k = 1:f_limit
         end
     else
         % fast mode: one covariance/weight per frequency bin
-        Rxx = (Xkf * Xkf') / Tframes;
+        Rxx = (Xkf_cov * Xkf_cov') / Tframes;
         if shrink_alpha > 0
             mu = trace(Rxx) / Nmic;
             Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
@@ -557,9 +569,95 @@ xlabel('Azimuth (deg)'); ylabel('Response (dB)');
 set(gca, 'LineWidth', 1);
 exportgraphics(gcf, 'Beampattern at 2k Hz.pdf', 'Resolution',600,...
     'ContentType','image');
-
-
 fprintf('Diagnostic done. See eig-spectrum and beampattern for 2 kHz.\n');
+
+
+
+%% ========== Additional Diagnostic for 4 kHz (interference frequency) ==========
+% find freq bin for 4kHz
+[~, k4] = min(abs(F - 4000));
+center_frame = round(numFrames/2);
+t1c_4k = max(1, center_frame - floor(Mavg/2));
+t2c_4k = min(numFrames, center_frame + floor(Mavg/2));
+
+% Use interference+noise covariance if oracle mode is enabled (consistent with MVDR loop)
+if use_oracle_intnoi_cov
+    Xkf_k4 = squeeze(S_intnoi(k4,:,:)).';   % Nmic x Tframes (interference + noise only)
+else
+    Xkf_k4 = squeeze(S(k4,:,:)).';          % Nmic x Tframes (total signal)
+end
+
+t2c_4k = min(t2c_4k, size(Xkf_k4,2));
+Xlocc_4k = Xkf_k4(:, t1c_4k:t2c_4k);
+Rxxc_4k = (Xlocc_4k * Xlocc_4k') / size(Xlocc_4k,2);
+
+if shrink_alpha > 0
+    mu_c_4k = trace(Rxxc_4k) / Nmic;
+    Rxxc_4k = (1 - shrink_alpha) * Rxxc_4k + shrink_alpha * mu_c_4k * eye(Nmic, 'like', Rxxc_4k);
+end
+
+% Try smaller diagonal loading for better suppression
+epsilon_4k = epsilon * 0.1;  % Reduce loading by 10x for diagnostic
+Rxxc_4k = Rxxc_4k + (epsilon_4k * trace(Rxxc_4k) / Nmic) * eye(Nmic, 'like', Rxxc_4k);
+
+at_k4 = a_target(:, k4);
+
+% Check condition number to diagnose ill-conditioning
+cond_num = cond(Rxxc_4k);
+fprintf('\n===== 4 kHz Covariance Diagnostics =====\n');
+fprintf('Condition number: %.2e\n', cond_num);
+if use_oracle_intnoi_cov
+    fprintf('Using interference+noise covariance\n');
+else
+    fprintf('Using total signal covariance\n');
+end
+fprintf('Diagonal loading: %.2e\n', epsilon_4k * trace(Rxxc_4k) / Nmic);
+
+w_diag_4k = Rxxc_4k \ at_k4;
+denom_diag_4k = (at_k4' * w_diag_4k);
+if abs(denom_diag_4k) < 1e-12
+    Wdiag_4k = zeros(size(w_diag_4k));
+    fprintf('Warning: MVDR weight computation failed (denominator too small)\n');
+else
+    Wdiag_4k = w_diag_4k ./ denom_diag_4k;
+end
+
+% Check beamformer response in target and interference directions
+resp_target_check = 20*log10(abs(Wdiag_4k' * at_k4) + eps);
+ai_k4 = a_interf(:, k4);
+resp_interf_check = 20*log10(abs(Wdiag_4k' * ai_k4) + eps);
+fprintf('Beam response at target DOA:  %.2f dB\n', resp_target_check);
+fprintf('Beam response at interferer DOA: %.2f dB\n', resp_interf_check);
+fprintf('Suppression (target - interf): %.2f dB\n', resp_target_check - resp_interf_check);
+fprintf('========================================\n');
+
+% beampattern at 4 kHz over azimuth
+azs_4k = -180:1:180;
+resp_4k = zeros(size(azs_4k));
+for ii = 1:length(azs_4k)
+    d_try = [cosd(0)*cosd(azs_4k(ii)); cosd(0)*sind(azs_4k(ii)); sind(0)];
+    a_try = exp(-1j*2*pi*F(k4) * ((mic_pos - r_center) * d_try) / c);
+    a_try = a_try / norm(a_try);
+    resp_4k(ii) = 20*log10(abs(Wdiag_4k' * a_try) + eps);
+end
+
+figure(14); plot(azs_4k, resp_4k); grid on;
+xlabel('Azimuth (deg)'); ylabel('Response (dB)'); 
+title(sprintf('Beampattern at %.1f Hz (Interference)', F(k4)));
+
+% Mark target and interference directions
+[~, az_target] = min(abs(azs_4k - atan2d(u_target(2), u_target(1))));
+[~, az_interf] = min(abs(azs_4k - atan2d(u_interf(2), u_interf(1))));
+hold on;
+plot(azs_4k(az_target), resp_4k(az_target), 'r^', 'MarkerSize', 10, 'LineWidth', 2);
+plot(azs_4k(az_interf), resp_4k(az_interf), 'mv', 'MarkerSize', 10, 'LineWidth', 2);
+legend({'Beam response', 'Target direction', 'Interference direction'});
+
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'Beampattern at 4k Hz.pdf', 'Resolution',600,...
+    'ContentType','image');
+
+fprintf('4 kHz diagnostic complete. Check beampattern to verify interference suppression.\n');
 
 %% ========== 9. ISTFT and normalization ==========
 y_mvdr = istft(Yf, fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
@@ -728,6 +826,40 @@ legend({'Composite signal','MVDR output'});
 
 set(gca, 'LineWidth', 1);
 exportgraphics(gcf, 'PSD around 2 kHz.pdf', 'Resolution',600,...
+    'ContentType','image');
+
+% Critical: PSD around 4 kHz to check interference suppression
+figure(15); clf;
+plot(Fp, 10*log10(Pxx_in + eps)); hold on;
+plot(Fp, 10*log10(Pxx_out + eps), 'LineWidth', 1.5);
+xlim([3500 4500]);
+xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
+legend({'Composite signal','MVDR output'}); 
+title('PSD around 4 kHz (Interference Frequency) - Check Suppression');
+grid on;
+
+% Calculate suppression at exactly 4kHz
+[~, idx_4k] = min(abs(Fp - 4000));
+psd_in_4k = 10*log10(Pxx_in(idx_4k) + eps);
+psd_out_4k = 10*log10(Pxx_out(idx_4k) + eps);
+suppression_4k = psd_in_4k - psd_out_4k;
+
+fprintf('\n===== 4 kHz INTERFERENCE SUPPRESSION =====\n');
+fprintf('Input PSD at 4 kHz:  %.2f dB/Hz\n', psd_in_4k);
+fprintf('Output PSD at 4 kHz: %.2f dB/Hz\n', psd_out_4k);
+fprintf('Suppression:         %.2f dB\n', suppression_4k);
+fprintf('==========================================\n');
+
+if suppression_4k < 3
+    warning('MVDR: Poor interference suppression at 4 kHz (%.2f dB). Check steering vectors and covariance estimation.', suppression_4k);
+elseif suppression_4k < 10
+    fprintf('Note: Moderate suppression (%.2f dB). Consider reducing diagonal loading further.\n', suppression_4k);
+else
+    fprintf('Good! Interference suppressed by %.2f dB at 4 kHz.\n', suppression_4k);
+end
+
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'PSD around 4 kHz.pdf', 'Resolution',600,...
     'ContentType','image');
 
 % %% ========== 11. Save output audio ==========
