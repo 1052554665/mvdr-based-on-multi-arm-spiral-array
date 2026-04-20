@@ -62,6 +62,10 @@ end
 use_parallel_rir = true;   % parallelize per-mic RIR generation when possible
 mvdr_frame_stride = 2;     % update MVDR weights every N frames (1 = full update)
 
+% source level control for reproducible tone experiments
+normalize_source_rms = true;
+INR_dB = 0;                 % interference-to-target level before room propagation
+
 % false: one weight per freq (fast), true: per-frame adaptive
 if ~exist('mvdr_use_time_varying', 'var')
     mvdr_use_time_varying = false;
@@ -72,6 +76,9 @@ mvdr_fmin_hz = 300;              % very low frequencies have weak spatial select
 mvdr_progress_step = 20;         % print progress every N frequency bins
 if ~exist('use_oracle_intnoi_cov', 'var')
     use_oracle_intnoi_cov = true;    % true: use interference+noise covariance (debug upper bound)
+end
+if ~exist('use_oracle_tarnoi_cov', 'var')
+    use_oracle_tarnoi_cov = true;    % true: use target+noise covariance for interference-steered MVDR
 end
 
 %% ====================== 可视化房间、声源和麦克风阵列位置 ======================
@@ -233,8 +240,8 @@ fprintf('RIR generation done.\n');
 
 %% ========== 5. Generate source signals and convolve with RIR (do NOT add manual delays) ==========
 %% ========== Load real source signals (.wav) ==========
-[target_sig, fs_t] = audioread('Normal_part92.wav');
-[interf_sig, fs_i] = audioread('sine_wave.wav');
+[target_sig, fs_t] = audioread('sine_wave_1k.wav');
+[interf_sig, fs_i] = audioread('sine_wave_4k.wav');
 
 % mono conversion
 if size(target_sig,2) > 1
@@ -257,6 +264,14 @@ Nt = min(length(target_sig), length(interf_sig));
 x_target = target_sig(1:Nt);
 x_interf = interf_sig(1:Nt);
 
+if normalize_source_rms
+    x_target = x_target / (sqrt(mean(x_target.^2)) + eps);
+    x_interf = x_interf / (sqrt(mean(x_interf.^2)) + eps);
+end
+
+% set source INR before room propagation
+x_interf = x_interf * 10^(INR_dB/20);
+
 t = (0:Nt-1).' / fs;
 
 
@@ -275,14 +290,16 @@ end
 
 % add noise to meet overall SNR per channel (relative to target)
 % 计算目标信号的RMS，根据SNR计算期望的噪声RMS，生成高斯噪声并调整其RMS
-sig_rms = sqrt(mean(X_target.^2, 1));
-desired_noise_rms = sig_rms ./ (10^(SNR/20));
-noise = randn(size(X_target));
-cur_noise_rms = sqrt(mean(noise.^2, 1));
-noise = noise .* (desired_noise_rms ./ cur_noise_rms);
+% sig_rms = sqrt(mean(X_target.^2, 1));
+% desired_noise_rms = sig_rms ./ (10^(SNR/20));
+% noise = randn(size(X_target));
+% cur_noise_rms = sqrt(mean(noise.^2, 1));
+% noise = noise .* (desired_noise_rms ./ cur_noise_rms);
 
-X_noisy = X_target + X_interf + noise;  % 合成带噪信号
-fprintf('Signals prepared (RIR only). No extra delays added.\n');
+% direct input from loaded target/interference signals (no synthetic noise)
+noise = zeros(size(X_target));
+X_noisy = X_target + X_interf;
+fprintf('Signals prepared from direct target/interference signals (no added noise).\n');
 
 %% ========== SNR BEFORE MVDR (reference: mic 1) ==========
 ref_mic = 1;
@@ -292,11 +309,21 @@ x_intnoi_in = X_interf(:, ref_mic) + noise(:, ref_mic);
 
 P_tar_in = mean(x_tar_in.^2);
 P_intnoi_in = mean(x_intnoi_in.^2);
+P_int_in = mean(X_interf(:, ref_mic).^2);
+P_noise_in = mean(noise(:, ref_mic).^2);
 
 SNR_in_dB = 10*log10(P_tar_in / P_intnoi_in);
+SIR_in_dB = 10*log10(P_tar_in / P_int_in);
+if P_noise_in > 0
+    SNR_noise_in_dB = 10*log10(P_tar_in / P_noise_in);
+else
+    SNR_noise_in_dB = inf;
+end
 
 fprintf('\n===== INPUT SNR =====\n');
-fprintf('Input SNR (mic %d): %.2f dB\n', ref_mic, SNR_in_dB);
+fprintf('Input SINR (mic %d, target/(interference+noise)): %.2f dB\n', ref_mic, SNR_in_dB);
+fprintf('Input SIR  (target/interference)              : %.2f dB\n', SIR_in_dB);
+fprintf('Input SNRn (target/noise only)                : %.2f dB\n', SNR_noise_in_dB);
 fprintf('=====================\n');
 
 
@@ -308,7 +335,7 @@ noverlap = 256;
 % compute STFT channel-wise; we store as S(freq, time, channel)
 % 对每个麦克风通道进行STFT，结果存储在S（频率×时间×通道）
 for m = 1:Nmic
-    [S(:,:,m), F, T] = stft(X_noisy(:,m), fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
+    [S(:,:,m), F, T] = stft(X_noisy(:,m), fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft, 'FrequencyRange', 'onesided');
 end
 Fbins = length(F);  % 获取频率点和时间帧
 Tframes = length(T);
@@ -328,20 +355,30 @@ fprintf('STFT computed: %d freq bins, %d time frames. MVDR bins %d..%d (%.1f-%.1
 
 %% ========== STFT of target-only and interference+noise (for SNR eval) ==========
 S_tar = zeros(size(S));
+S_interf = zeros(size(S));
 S_intnoi = zeros(size(S));
+S_tarnoi = zeros(size(S));
 
 for m = 1:Nmic
     S_tar(:,:,m) = stft(X_target(:,m), fs, ...
-        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
+        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft, 'FrequencyRange', 'onesided');
+
+    S_interf(:,:,m) = stft(X_interf(:,m), fs, ...
+        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft, 'FrequencyRange', 'onesided');
 
     S_intnoi(:,:,m) = stft(X_interf(:,m) + noise(:,m), fs, ...
-        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
+        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft, 'FrequencyRange', 'onesided');
+
+    S_tarnoi(:,:,m) = stft(X_target(:,m) + noise(:,m), fs, ...
+        'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft, 'FrequencyRange', 'onesided');
 end
 
 if gpu_ok
     S = gpuArray(S);
     S_tar = gpuArray(S_tar);
+    S_interf = gpuArray(S_interf);
     S_intnoi = gpuArray(S_intnoi);
+    S_tarnoi = gpuArray(S_tarnoi);
 end
 
 %% ===== Far-field DOA unit vectors (from source position) =====
@@ -403,21 +440,27 @@ end
 
 
 %% ========== 8. Memory-safe per-frame MVDR (diagonal loading adapted) ==========
-fprintf('Running MVDR (per-frequency, per-frame) ...\n');
-% initialize with reference-mic passthrough to avoid zeroing unprocessed bins
-Yf = squeeze(S(:,:,ref_mic));
-Y_tar = squeeze(S_tar(:,:,ref_mic));
-Y_intnoi = squeeze(S_intnoi(:,:,ref_mic));
+fprintf('Running dual MVDR (target-steered + interference-steered) ...\n');
+
+% target-steered branch: keep target, suppress interference+noise
+Yf_tgt = squeeze(S(:,:,ref_mic));
+Y_tar_tgt = squeeze(S_tar(:,:,ref_mic));
+Y_intnoi_tgt = squeeze(S_intnoi(:,:,ref_mic));
+
+% interference-steered branch: keep interference, suppress target+noise
+Yf_int = squeeze(S(:,:,ref_mic));
+Y_interf_int = squeeze(S_interf(:,:,ref_mic));
+Y_tarnoi_int = squeeze(S_tarnoi(:,:,ref_mic));
 
 % Tunable parameters (you can try Mavg=21/epsilon=1e-2, or smaller)
-Mavg = 21;                     % averaging window for covariance (frames)
-epsilon = 1e-3;                % base loading (relative scale)
+Mavg = 31;                     % averaging window for covariance (frames)
+epsilon = 1e-4;                % base loading (relative scale)
 
 % optional shrinkage factor for additional stability (set 0 to disable)
-shrink_alpha = 0.05;           % 0..0.3 typical; 0 means no shrinkage
+shrink_alpha = 0.01;           % 0..0.3 typical; 0 means no shrinkage
 
 tic
-%% 对每个频率和时间帧，用局部滑窗估计协方差矩阵
+%% 对每个频率和时间帧，用局部滑窗估计协方差矩阵（目标指向分支）
 for k = f_start:f_limit
     Xkf = squeeze(S(k,:,:)).';   % Nmic x Tframes
     Xkf_tar = squeeze(S_tar(k,:,:)).';        % Nmic x Tframes
@@ -459,9 +502,9 @@ for k = f_start:f_limit
                 w_last = w;
             end
 
-            Yf(k,n) = w_last' * Xkf(:,n);
-            Y_tar(k,n) = w_last' * Xkf_tar(:,n);
-            Y_intnoi(k,n) = w_last' * Xkf_intnoi(:,n);
+            Yf_tgt(k,n) = w_last' * Xkf(:,n);
+            Y_tar_tgt(k,n) = w_last' * Xkf_tar(:,n);
+            Y_intnoi_tgt(k,n) = w_last' * Xkf_intnoi(:,n);
         end
     else
         % fast mode: one covariance/weight per frequency bin
@@ -479,25 +522,107 @@ for k = f_start:f_limit
             w = w / denom;
         end
 
-        Yf(k,:) = w' * Xkf;
-        Y_tar(k,:) = w' * Xkf_tar;
-        Y_intnoi(k,:) = w' * Xkf_intnoi;
+        Yf_tgt(k,:) = w' * Xkf;
+        Y_tar_tgt(k,:) = w' * Xkf_tar;
+        Y_intnoi_tgt(k,:) = w' * Xkf_intnoi;
     end
 
     if mod(k, mvdr_progress_step) == 0 || k == f_limit
-        fprintf('MVDR progress: %d/%d bins (%.1f%%), elapsed %.1fs\n', k, f_limit, 100*k/f_limit, toc);
+        fprintf('MVDR target-beam progress: %d/%d bins (%.1f%%), elapsed %.1fs\n', k, f_limit, 100*k/f_limit, toc);
+    end
+end
+
+%% 对每个频率和时间帧，用局部滑窗估计协方差矩阵（干扰指向分支）
+for k = f_start:f_limit
+    Xkf = squeeze(S(k,:,:)).';   % Nmic x Tframes
+    Xkf_interf = squeeze(S_interf(k,:,:)).';      % Nmic x Tframes
+    Xkf_tarnoi = squeeze(S_tarnoi(k,:,:)).';      % Nmic x Tframes
+    if use_oracle_tarnoi_cov
+        Xkf_cov = Xkf_tarnoi;
+    else
+        Xkf_cov = Xkf;
+    end
+    ai = a_interf(:,k);
+    if norm(ai) < 1e-12
+        continue;
+    end
+
+    if mvdr_use_time_varying
+        w_last = zeros(Nmic,1, 'like', ai);
+        for n = 1:Tframes
+            if n == 1 || mod(n-1, mvdr_frame_stride) == 0
+                t1 = max(1, n - floor(Mavg/2));
+                t2 = min(Tframes, n + floor(Mavg/2));
+                Xloc = Xkf_cov(:, t1:t2);
+
+                Rxx = (Xloc * Xloc') / size(Xloc,2);
+
+                if shrink_alpha > 0
+                    mu = trace(Rxx) / Nmic;
+                    Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
+                end
+
+                Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
+                w = Rxx \ ai;
+                denom = ai' * w;
+                if abs(denom) < 1e-12
+                    w = zeros(Nmic,1, 'like', ai);
+                else
+                    w = w / denom;
+                end
+                w_last = w;
+            end
+
+            Yf_int(k,n) = w_last' * Xkf(:,n);
+            Y_interf_int(k,n) = w_last' * Xkf_interf(:,n);
+            Y_tarnoi_int(k,n) = w_last' * Xkf_tarnoi(:,n);
+        end
+    else
+        Rxx = (Xkf_cov * Xkf_cov') / Tframes;
+        if shrink_alpha > 0
+            mu = trace(Rxx) / Nmic;
+            Rxx = (1 - shrink_alpha) * Rxx + shrink_alpha * mu * eye(Nmic, 'like', Rxx);
+        end
+        Rxx = Rxx + epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
+        w = Rxx \ ai;
+        denom = ai' * w;
+        if abs(denom) < 1e-12
+            w = zeros(Nmic,1, 'like', ai);
+        else
+            w = w / denom;
+        end
+
+        Yf_int(k,:) = w' * Xkf;
+        Y_interf_int(k,:) = w' * Xkf_interf;
+        Y_tarnoi_int(k,:) = w' * Xkf_tarnoi;
+    end
+
+    if mod(k, mvdr_progress_step) == 0 || k == f_limit
+        fprintf('MVDR interf-beam progress: %d/%d bins (%.1f%%), elapsed %.1fs\n', k, f_limit, 100*k/f_limit, toc);
     end
 end
 toc
 
 if gpu_ok
     % gather once before diagnostics/ISTFT to avoid repeated host-device sync
-    Yf = gather(Yf);
-    Y_tar = gather(Y_tar);
-    Y_intnoi = gather(Y_intnoi);
+    Yf_tgt = gather(Yf_tgt);
+    Y_tar_tgt = gather(Y_tar_tgt);
+    Y_intnoi_tgt = gather(Y_intnoi_tgt);
+    Yf_int = gather(Yf_int);
+    Y_interf_int = gather(Y_interf_int);
+    Y_tarnoi_int = gather(Y_tarnoi_int);
     S = gather(S);
+    S_interf = gather(S_interf);
+    S_intnoi = gather(S_intnoi);
+    S_tarnoi = gather(S_tarnoi);
     a_target = gather(a_target);
+    a_interf = gather(a_interf);
 end
+
+% legacy aliases (keep downstream diagnostics compatible with original script)
+Yf = Yf_tgt;
+Y_tar = Y_tar_tgt;
+Y_intnoi = Y_intnoi_tgt;
 
 
 %% ========== Diagnostic for 2 kHz and Rxx (place right after MVDR loop, before ISTFT) ==========
@@ -528,7 +653,7 @@ figure(3); plot(1:Nmic, 10*log10(evals + eps), '-o');
 xlabel('Index'); ylabel('Eigenvalue (dB)'); 
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Rxx eig-spectrum at 2 kHz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'Rxx eig-spectrum at 2 kHz.pdf', 'Resolution',300,...
     'ContentType','image');
 % title('Rxx eig-spectrum at ~2 kHz');
 
@@ -567,7 +692,7 @@ xlabel('Azimuth (deg)'); ylabel('Response (dB)');
 % title(sprintf('Beampattern at %.1f Hz', F(k2)));
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Beampattern at 2k Hz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'Beampattern at 2k Hz.pdf', 'Resolution',300,...
     'ContentType','image');
 fprintf('Diagnostic done. See eig-spectrum and beampattern for 2 kHz.\n');
 
@@ -641,7 +766,7 @@ for ii = 1:length(azs_4k)
     resp_4k(ii) = 20*log10(abs(Wdiag_4k' * a_try) + eps);
 end
 
-figure(14); plot(azs_4k, resp_4k); grid on;
+figure(5); plot(azs_4k, resp_4k); grid on;
 xlabel('Azimuth (deg)'); ylabel('Response (dB)'); 
 title(sprintf('Beampattern at %.1f Hz (Interference)', F(k4)));
 
@@ -654,212 +779,262 @@ plot(azs_4k(az_interf), resp_4k(az_interf), 'mv', 'MarkerSize', 10, 'LineWidth',
 legend({'Beam response', 'Target direction', 'Interference direction'});
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Beampattern at 4k Hz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'Beampattern at 4k Hz.pdf', 'Resolution',300,...
     'ContentType','image');
 
 fprintf('4 kHz diagnostic complete. Check beampattern to verify interference suppression.\n');
 
 %% ========== 9. ISTFT and normalization ==========
-y_mvdr = istft(Yf, fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft);
-% istft may return a slightly different length; trim/pad to original length
-y_mvdr = real(y_mvdr);
+y_mvdr_target = real(istft(Yf_tgt, fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
+y_mvdr_interf = real(istft(Yf_int, fs, 'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
 
 % robust length alignment   调整输出长度与输入相同
-if length(y_mvdr) >= Nt
-    y_mvdr = y_mvdr(1:Nt);
+if length(y_mvdr_target) >= Nt
+    y_mvdr_target = y_mvdr_target(1:Nt);
 else
-    y_mvdr = [y_mvdr; zeros(Nt - length(y_mvdr), 1)];
+    y_mvdr_target = [y_mvdr_target; zeros(Nt - length(y_mvdr_target), 1)];
+end
+if length(y_mvdr_interf) >= Nt
+    y_mvdr_interf = y_mvdr_interf(1:Nt);
+else
+    y_mvdr_interf = [y_mvdr_interf; zeros(Nt - length(y_mvdr_interf), 1)];
 end
 
 % energy normalization (avoid clipping)
-y_mvdr = y_mvdr / max(abs(y_mvdr) + 1e-12);
+y_mvdr_target = y_mvdr_target / max(abs(y_mvdr_target) + 1e-12);
+y_mvdr_interf = y_mvdr_interf / max(abs(y_mvdr_interf) + 1e-12);
+
+% legacy alias
+y_mvdr = y_mvdr_target;
 
 
-%% ========== ISTFT for SNR evaluation ==========
-y_tar_out = real(istft(Y_tar, fs, ...
+%% ========== ISTFT for metric evaluation ==========
+y_tar_out_target = real(istft(Y_tar_tgt, fs, ...
+    'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
+y_intnoi_out_target = real(istft(Y_intnoi_tgt, fs, ...
     'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
 
-y_intnoi_out = real(istft(Y_intnoi, fs, ...
+y_interf_out_interf = real(istft(Y_interf_int, fs, ...
+    'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
+y_tarnoi_out_interf = real(istft(Y_tarnoi_int, fs, ...
     'Window', win, 'OverlapLength', noverlap, 'FFTLength', Nfft));
 
 %% ===== Length alignment (SAFE) =====
-L = min([length(y_tar_out), length(y_intnoi_out), length(y_mvdr)]);
+Lsig = min([length(y_mvdr_target), length(y_mvdr_interf), ...
+    length(y_tar_out_target), length(y_intnoi_out_target), ...
+    length(y_interf_out_interf), length(y_tarnoi_out_interf)]);
 
-y_tar_out    = y_tar_out(1:L);
-y_intnoi_out = y_intnoi_out(1:L);
-y_mvdr       = y_mvdr(1:L);
+y_mvdr_target = y_mvdr_target(1:Lsig);
+y_mvdr_interf = y_mvdr_interf(1:Lsig);
+y_mvdr = y_mvdr(1:Lsig);
+
+y_tar_out_target = y_tar_out_target(1:Lsig);
+y_intnoi_out_target = y_intnoi_out_target(1:Lsig);
+y_interf_out_interf = y_interf_out_interf(1:Lsig);
+y_tarnoi_out_interf = y_tarnoi_out_interf(1:Lsig);
 
 
-%% ========== SNR AFTER MVDR ==========
-P_tar_out = mean(y_tar_out.^2);
-P_intnoi_out = mean(y_intnoi_out.^2);
+%% ========== Target-steered MVDR performance ==========
+P_tar_out = mean(y_tar_out_target.^2);
+P_intnoi_out = mean(y_intnoi_out_target.^2);
 
 SNR_out_dB = 10*log10(P_tar_out / P_intnoi_out);
 SNR_gain_dB = SNR_out_dB - SNR_in_dB;
 
-fprintf('\n===== MVDR SNR PERFORMANCE =====\n');
-fprintf('Input  SNR (mic %d): %.2f dB\n', ref_mic, SNR_in_dB);
-fprintf('Output SNR (MVDR)  : %.2f dB\n', SNR_out_dB);
-fprintf('SNR Improvement   : %.2f dB\n', SNR_gain_dB);
+fprintf('\n===== TARGET-STEERED MVDR =====\n');
+fprintf('Input  SNR (mic %d, target/(interf+noise)): %.2f dB\n', ref_mic, SNR_in_dB);
+fprintf('Output SNR (target beam)                  : %.2f dB\n', SNR_out_dB);
+fprintf('SNR Improvement                           : %.2f dB\n', SNR_gain_dB);
 fprintf('================================\n');
 
 
-%% ========== SNR improvement visualization ==========
-figure(5);
-bar([SNR_in_dB, SNR_out_dB]);
-set(gca,'XTickLabel',{'Before MVDR','After MVDR'});
-ylabel('SNR (dB)');
-% title(sprintf('MVDR SNR Improvement: %.2f dB', SNR_gain_dB));
+%% ========== Interference-steered MVDR performance ==========
+P_interf_in = mean(X_interf(:, ref_mic).^2);
+P_tarnoi_in = mean((X_target(:, ref_mic) + noise(:, ref_mic)).^2);
+ISR_in_dB = 10*log10(P_interf_in / P_tarnoi_in);
 
-set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'MVDR SNR Improvement.pdf', 'Resolution',600,...
-    'ContentType','image');
+P_interf_out = mean(y_interf_out_interf.^2);
+P_tarnoi_out = mean(y_tarnoi_out_interf.^2);
+ISR_out_dB = 10*log10(P_interf_out / P_tarnoi_out);
+ISR_gain_dB = ISR_out_dB - ISR_in_dB;
 
+fprintf('\n===== INTERFERENCE-STEERED MVDR =====\n');
+fprintf('Input  ISR (mic %d, interf/(target+noise)): %.2f dB\n', ref_mic, ISR_in_dB);
+fprintf('Output ISR (interference beam)           : %.2f dB\n', ISR_out_dB);
+fprintf('ISR Improvement                          : %.2f dB\n', ISR_gain_dB);
+fprintf('========================================\n');
+
+
+%% ========== Improvement visualization ==========
+figure(6);
+bar([SNR_in_dB, SNR_out_dB; ISR_in_dB, ISR_out_dB]);
+set(gca,'XTickLabel',{'Target beam','Interference beam'});
+ylabel('Ratio (dB)');
+legend({'Before MVDR','After MVDR'}, 'Location', 'best');
 grid on;
 
-%% ========== 10. Diagnostics: show waveforms & spectrograms & PSD around 1kHz ==========
-% figure(6); 
-% % subplot(3,1,1);
-% t1 = (0:length(X_target(:,1))-1)/fs;
-% plot(t1, X_target(:,1));
-% % title('Target (mic 1, with RIR)');
-% xlabel('Time (s)');
-% ylabel('Amplitude');
-% 
-% set(gca, 'LineWidth', 1);
-% exportgraphics(gcf, 'Target signal.pdf', ...
-%     'ContentType','image');
-% 
-% figure(7);
-% % subplot(3,1,2);
-% t2 = (0:length(X_noisy(:,1))-1)/fs;
-% plot(t2, X_noisy(:,1));
-% % title('Noisy (mic 1)');
-% xlabel('Time (s)');
-% ylabel('Amplitude');
-% 
-% set(gca, 'LineWidth', 1);
-% exportgraphics(gcf, 'Noisy signal.pdf', ...
-%     'ContentType','image');
-% 
-% figure(8);
-% % subplot(3,1,3);
-% t3 = (0:length(y_mvdr)-1)/fs;
-% plot(t3, y_mvdr);
-% % title('MVDR output (time)');
-% xlabel('Time (s)');
-% ylabel('Amplitude');
-% 
-% set(gca, 'LineWidth', 1);
-% exportgraphics(gcf, 'MVDR output.pdf', ...
-%     'ContentType','image');
-
-
-figure(9); 
-% subplot(3,1,1); 
-spectrogram(X_target(:,1), hamming(256), 128, 512, fs, 'yaxis'); 
-% title('Target spectrogram (mic1)');
-xlabel('Time (ms)');
-ylabel('Frequency(kHz)');
-c = colorbar;  % 获取颜色条句柄
-c.Label.String = 'Power/Frequency (dB/Hz)';  % 颜色条标签（音频频谱常用dB/Hz）
-
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Target spectrogram.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'MVDR Ratio Improvement (Dual Beam).pdf', 'Resolution',300,...
     'ContentType','image');
 
 
-figure(10); 
-% subplot(3,1,2); 
-spectrogram(X_noisy(:,1), hamming(256), 128, 512, fs, 'yaxis'); 
-% title('Noisy spectrogram (mic1)');
-
-xlabel('Time (ms)');
-ylabel('Frequency(kHz)');
-c = colorbar;  % 获取颜色条句柄
-c.Label.String = 'Power/Frequency (dB/Hz)';  % 颜色条标签（音频频谱常用dB/Hz）
-
+% ========== 10. Diagnostics: waveforms, spectrograms, PSD ==========
+figure(7);
+t1 = (0:length(X_target(:,1))-1)/fs;
+plot(t1, X_target(:,1));
+xlabel('Time (s)');
+ylabel('Amplitude');
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Noisy spectrogram.pdf', 'Resolution',600, ...
+exportgraphics(gcf, 'Target signal.pdf', ...
     'ContentType','image');
 
-figure(11); 
-% subplot(3,1,3); 
-spectrogram(y_mvdr, hamming(256), 128, 512, fs, 'yaxis'); 
-xlabel('Time (ms)');
-ylabel('Frequency(kHz)');
-c = colorbar;  % 获取颜色条句柄
-c.Label.String = 'Power/Frequency (dB/Hz)';  % 颜色条标签（音频频谱常用dB/Hz）
-
-% title('MVDR output spectrogram');
-
+figure(8);
+t2 = (0:length(X_noisy(:,1))-1)/fs;
+plot(t2, X_noisy(:,1));
+xlabel('Time (s)');
+ylabel('Amplitude');
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'MVDR output spectrogram.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'Noisy signal.pdf', ...
     'ContentType','image');
 
-% PSD around 1 kHz
+figure(9);
+t3 = (0:length(y_mvdr_target)-1)/fs;
+plot(t3, y_mvdr_target, 'b'); hold on;
+plot(t3, y_mvdr_interf, 'm');
+xlabel('Time (s)');
+ylabel('Amplitude');
+legend({'Target-steered output','Interference-steered output'});
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'MVDR dual outputs.pdf', ...
+    'ContentType','image');
+
+
+figure(10);
+spectrogram(X_target(:,1), hamming(256), 128, 512, fs, 'yaxis');
+xlabel('Time (ms)');
+ylabel('Frequency(kHz)');
+c = colorbar;
+c.Label.String = 'Power/Frequency (dB/Hz)';
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'Target spectrogram.pdf', 'Resolution',300,...
+    'ContentType','image');
+
+figure(11);
+spectrogram(X_noisy(:,1), hamming(256), 128, 512, fs, 'yaxis');
+xlabel('Time (ms)');
+ylabel('Frequency(kHz)');
+c = colorbar;
+c.Label.String = 'Power/Frequency (dB/Hz)';
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'Noisy spectrogram.pdf', 'Resolution',300, ...
+    'ContentType','image');
+
+figure(12);
+spectrogram(y_mvdr_target, hamming(256), 128, 512, fs, 'yaxis');
+xlabel('Time (ms)');
+ylabel('Frequency(kHz)');
+c = colorbar;
+c.Label.String = 'Power/Frequency (dB/Hz)';
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'MVDR target-beam spectrogram.pdf', 'Resolution',300,...
+    'ContentType','image');
+
+figure(13);
+spectrogram(y_mvdr_interf, hamming(256), 128, 512, fs, 'yaxis');
+xlabel('Time (ms)');
+ylabel('Frequency(kHz)');
+c = colorbar;
+c.Label.String = 'Power/Frequency (dB/Hz)';
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'MVDR interference-beam spectrogram.pdf', 'Resolution',300,...
+    'ContentType','image');
+
+% 处理前后频谱图（目标指向）
+figure(14); clf;
+subplot(1,2,1);
+spectrogram(X_noisy(:,1), hamming(256), 128, 512, fs, 'yaxis');
+title('Before MVDR (mic1)');
+xlabel('Time (ms)'); ylabel('Frequency(kHz)');
+subplot(1,2,2);
+spectrogram(y_mvdr_target, hamming(256), 128, 512, fs, 'yaxis');
+title('After MVDR (Target-steered)');
+xlabel('Time (ms)'); ylabel('Frequency(kHz)');
+ax17 = findall(gcf, 'Type', 'Axes');
+clim17 = max(cell2mat(arrayfun(@(ax) ax.CLim, ax17, 'UniformOutput', false)), [], 1);
+arrayfun(@(ax) caxis(ax, clim17), ax17);
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'Before-After Spectrogram (Target Beam).pdf', 'Resolution',300,...
+    'ContentType','image');
+
+% 处理前后频谱图（干扰指向）
+figure(15); clf;
+subplot(1,2,1);
+spectrogram(X_noisy(:,1), hamming(256), 128, 512, fs, 'yaxis');
+title('Before MVDR (mic1)');
+xlabel('Time (ms)'); ylabel('Frequency(kHz)');
+subplot(1,2,2);
+spectrogram(y_mvdr_interf, hamming(256), 128, 512, fs, 'yaxis');
+title('After MVDR (Interference-steered)');
+xlabel('Time (ms)'); ylabel('Frequency(kHz)');
+ax18 = findall(gcf, 'Type', 'Axes');
+clim18 = max(cell2mat(arrayfun(@(ax) ax.CLim, ax18, 'UniformOutput', false)), [], 1);
+arrayfun(@(ax) caxis(ax, clim18), ax18);
+set(gca, 'LineWidth', 1);
+exportgraphics(gcf, 'Before-After Spectrogram (Interference Beam).pdf', 'Resolution',300,...
+    'ContentType','image');
+
+
+% PSD comparison
 nfft_psd = 4096;
-[Pxx_in, Fp]  = pwelch(X_noisy(:,1), hann(1024), 512, nfft_psd, fs);
-[Pxx_out, ~]  = pwelch(y_mvdr,        hann(1024), 512, nfft_psd, fs);
+[Pxx_in, Fp] = pwelch(X_noisy(:,1), hann(1024), 512, nfft_psd, fs);
+[Pxx_out_target, ~] = pwelch(y_mvdr_target, hann(1024), 512, nfft_psd, fs);
+[Pxx_out_interf, ~] = pwelch(y_mvdr_interf, hann(1024), 512, nfft_psd, fs);
 
-figure(12); 
-plot(Fp, 10*log10(Pxx_in + eps)); hold on;
-plot(Fp, 10*log10(Pxx_out + eps), 'LineWidth', 1.5);
-xlim([800 1200]);
+figure(16);
+plot(Fp, 10*log10(Pxx_in + eps), 'k'); hold on;
+plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
+plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
+xlim([0 fs/2]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
-legend({'Composite signal','MVDR output'}); 
-% title('PSD around 1 kHz');
-
+legend({'Before MVDR','After Target-steered','After Interference-steered'});
+grid on;
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'PSD around 1 kHz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'PSD Fullband Dual MVDR.pdf', 'Resolution',300,...
     'ContentType','image');
 
-
-% Optional: PSD around 2 kHz for direct inspection
-figure(13); clf;
-plot(Fp, 10*log10(Pxx_in + eps)); hold on;
-plot(Fp, 10*log10(Pxx_out + eps), 'LineWidth', 1.5);
+figure(17); clf;
+plot(Fp, 10*log10(Pxx_in + eps), 'k'); hold on;
+plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
 xlim([1800 2200]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
-legend({'Composite signal','MVDR output'}); 
-% title('PSD around 2 kHz');
-
+legend({'Before MVDR','After Target-steered'});
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'PSD around 2 kHz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'PSD around 2 kHz (Target Beam).pdf', 'Resolution',300,...
     'ContentType','image');
 
-% Critical: PSD around 4 kHz to check interference suppression
-figure(15); clf;
-plot(Fp, 10*log10(Pxx_in + eps)); hold on;
-plot(Fp, 10*log10(Pxx_out + eps), 'LineWidth', 1.5);
+figure(18); clf;
+plot(Fp, 10*log10(Pxx_in + eps), 'k'); hold on;
+plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
+plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
 xlim([3500 4500]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
-legend({'Composite signal','MVDR output'}); 
-title('PSD around 4 kHz (Interference Frequency) - Check Suppression');
+legend({'Before MVDR','After Target-steered','After Interference-steered'});
+title('PSD around 4 kHz');
 grid on;
 
-% Calculate suppression at exactly 4kHz
 [~, idx_4k] = min(abs(Fp - 4000));
 psd_in_4k = 10*log10(Pxx_in(idx_4k) + eps);
-psd_out_4k = 10*log10(Pxx_out(idx_4k) + eps);
-suppression_4k = psd_in_4k - psd_out_4k;
+psd_tgt_4k = 10*log10(Pxx_out_target(idx_4k) + eps);
+psd_int_4k = 10*log10(Pxx_out_interf(idx_4k) + eps);
 
-fprintf('\n===== 4 kHz INTERFERENCE SUPPRESSION =====\n');
-fprintf('Input PSD at 4 kHz:  %.2f dB/Hz\n', psd_in_4k);
-fprintf('Output PSD at 4 kHz: %.2f dB/Hz\n', psd_out_4k);
-fprintf('Suppression:         %.2f dB\n', suppression_4k);
-fprintf('==========================================\n');
-
-if suppression_4k < 3
-    warning('MVDR: Poor interference suppression at 4 kHz (%.2f dB). Check steering vectors and covariance estimation.', suppression_4k);
-elseif suppression_4k < 10
-    fprintf('Note: Moderate suppression (%.2f dB). Consider reducing diagonal loading further.\n', suppression_4k);
-else
-    fprintf('Good! Interference suppressed by %.2f dB at 4 kHz.\n', suppression_4k);
-end
+fprintf('\n===== 4 kHz PSD CHECK =====\n');
+fprintf('Before MVDR (mic1): %.2f dB/Hz\n', psd_in_4k);
+fprintf('After Target-steered: %.2f dB/Hz\n', psd_tgt_4k);
+fprintf('After Interference-steered: %.2f dB/Hz\n', psd_int_4k);
+fprintf('============================\n');
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'PSD around 4 kHz.pdf', 'Resolution',600,...
+exportgraphics(gcf, 'PSD around 4 kHz (Dual Beam).pdf', 'Resolution',300,...
     'ContentType','image');
 
 % %% ========== 11. Save output audio ==========
