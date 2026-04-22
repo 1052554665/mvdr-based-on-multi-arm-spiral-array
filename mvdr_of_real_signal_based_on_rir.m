@@ -240,8 +240,8 @@ fprintf('RIR generation done.\n');
 
 %% ========== 5. Generate source signals and convolve with RIR (do NOT add manual delays) ==========
 %% ========== Load real source signals (.wav) ==========
-[target_sig, fs_t] = audioread('sine_wave_1k.wav');
-[interf_sig, fs_i] = audioread('sine_wave_4k.wav');
+[target_sig, fs_t] = audioread('Normal_part92.wav');
+[interf_sig, fs_i] = audioread('振安1#反_part46.wav');
 
 % mono conversion
 if size(target_sig,2) > 1
