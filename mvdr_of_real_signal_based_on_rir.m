@@ -71,7 +71,7 @@ if ~exist('mvdr_use_time_varying', 'var')
     mvdr_use_time_varying = false;
 end
 
-mvdr_fmax_hz = 4000;             % lower upper band for MVDR to reduce complexity
+mvdr_fmax_hz = 8000;             % MVDR upper band; raise to 8 kHz for full-band processing
 mvdr_fmin_hz = 300;              % very low frequencies have weak spatial selectivity
 mvdr_progress_step = 20;         % print progress every N frequency bins
 if ~exist('use_oracle_intnoi_cov', 'var')
