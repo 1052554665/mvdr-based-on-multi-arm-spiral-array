@@ -1,5 +1,3 @@
-%% 将目标信号和干扰分别替换为读取真实的信号 导向矢量基于远场计算
-
 set(groot, ...
     'defaultAxesFontName','Times New Roman', ...
     'defaultTextFontName','Times New Roman', ...
@@ -1036,10 +1034,3 @@ fprintf('============================\n');
 set(gca, 'LineWidth', 1);
 exportgraphics(gcf, 'PSD around 4 kHz (Dual Beam).pdf', 'Resolution',300,...
     'ContentType','image');
-
-% %% ========== 11. Save output audio ==========
-% audiowrite('y_mvdr.wav', y_mvdr, fs);
-% fprintf('Saved MVDR output to y_mvdr.wav\n');
-% 
-% %% ========== End ==========
-% fprintf('Processing complete. Check spectrogram, PSD and diagnostics: 1 kHz should be visible/enhanced; 2 kHz beampattern/eig-spectrum available for tuning.\n');
