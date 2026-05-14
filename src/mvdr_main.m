@@ -15,8 +15,17 @@
 clear; close all; clc;
 
 %% Add paths
-addpath(genpath('.'));  % Current directory and subdirectories
-cd(fileparts(mfilename('fullpath')));  % Change to script directory
+script_dir = fileparts(mfilename('fullpath'));
+project_root = fileparts(script_dir);
+external_rir_dir = fullfile(fileparts(project_root), 'RIR-Generator');
+
+cd(script_dir);  % Change to script directory first so relative paths are stable
+addpath(genpath(project_root));  % Project source tree
+if exist(external_rir_dir, 'dir') == 7
+    addpath(genpath(external_rir_dir));  % External RIR generator dependency
+else
+    warning('MVDR:Path', 'RIR-Generator folder not found at %s', external_rir_dir);
+end
 
 fprintf('====================================================\n');
 fprintf('  MVDR Beamforming with Real Signals (RIR-based)\n');

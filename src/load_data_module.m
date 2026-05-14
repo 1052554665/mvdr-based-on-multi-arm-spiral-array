@@ -29,9 +29,9 @@ title('Microphone Array Geometry (2D View)');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    set(gcf,'Color','white'); set(gca,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Microphone_Array_Geometry.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white');
+    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
 end
 
 %% 2. Load audio signals
@@ -121,9 +121,9 @@ title('Room, Sources, and Microphone Array');
 view(45, 25);
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    set(gcf,'Color','white'); set(gca,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Room_and_Array_Layout.pdf'), ...
-        'ContentType','vector', 'BackgroundColor','white');
+        'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
 end
 
 %% 4. Check far-field criterion (Fraunhofer distance)

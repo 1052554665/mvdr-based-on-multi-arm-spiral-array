@@ -49,8 +49,9 @@ mvdr-based-on-multi-arm-spiral-array/
 
 ## 使用指南
 
-- 添加输入音频文件到data/audio
-- 安装`Parallel Computing Toolbox`
+- 输入音频文件放在data/audio
+- Matlab安装`Parallel Computing Toolbox`
+- 下载`RIR-Generator`并添加到MATLAB路径（https://www.audiolabs-erlangen.de/fau/professor/habets/resources/simulation）
 
 ### 1. 快速开始
 

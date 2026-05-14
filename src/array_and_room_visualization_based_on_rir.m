@@ -45,9 +45,9 @@ axis equal;
 % title('Microphone Array Geometry');
 
 set(gca, 'LineWidth', 1);
-set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, fullfile(fig_dir, 'Microphone Array Geometry.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white');
+    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
 
 
 % figure(1);
@@ -121,6 +121,6 @@ view(45, 25);
 % legend({'Room boundary'}, 'Location','northeast');
 
 set(gca, 'LineWidth', 1);
-set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, fullfile(fig_dir, 'Microphone Array Layout.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white');
+    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
