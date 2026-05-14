@@ -5,8 +5,25 @@ set(groot, ...
     'defaultTextFontSize',20, ...
     'defaultLineLineWidth',1.2);
 
-%% ========== 1. Read mic positions (assume mic_positions.xlsx has X Y columns) ==========
-data = readmatrix('mic_positions.xlsx');
+%% ========== 1. Read mic positions (X Y columns) ==========
+script_dir = fileparts(mfilename('fullpath'));
+project_root = fileparts(script_dir);
+fig_dir = fullfile(project_root, 'output', 'figures');
+if exist(fig_dir, 'dir') ~= 7
+    mkdir(fig_dir);
+end
+
+mic_xlsx = fullfile(project_root, 'data', 'mic_positions.xlsx');
+mic_csv  = fullfile(project_root, 'data', 'mic_positions.csv');
+
+if exist(mic_xlsx, 'file') == 2
+    data = readmatrix(mic_xlsx);
+elseif exist(mic_csv, 'file') == 2
+    data = readmatrix(mic_csv);
+else
+    error('Cannot find mic position file. Checked: %s and %s', mic_xlsx, mic_csv);
+end
+
 X = data(:,1); Y = data(:,2);
 Z = zeros(size(X));           % 如果你在Excel里有Z列，把这行改为 Z = data(:,3);
 mic_pos = [X Y Z] / 1000;     % 假定Excel单位为 mm，直接换成 m；如果是 cm 用 /100
@@ -28,8 +45,9 @@ axis equal;
 % title('Microphone Array Geometry');
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Microphone Array Geometry.pdf', 'Resolution',600,...
-    'ContentType','image');
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+exportgraphics(gcf, fullfile(fig_dir, 'Microphone Array Geometry.pdf'), ...
+    'ContentType','vector', 'BackgroundColor','white');
 
 
 % figure(1);
@@ -103,5 +121,6 @@ view(45, 25);
 % legend({'Room boundary'}, 'Location','northeast');
 
 set(gca, 'LineWidth', 1);
-exportgraphics(gcf, 'Microphone Array Layout.pdf', ...
-    'ContentType','image');
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+exportgraphics(gcf, fullfile(fig_dir, 'Microphone Array Layout.pdf'), ...
+    'ContentType','vector', 'BackgroundColor','white');

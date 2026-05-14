@@ -6,6 +6,9 @@ function diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intno
     X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic)
 
 fprintf('\n[Diagnostics] Starting diagnostics and visualization...\n');
+% Improve visibility: bold black axes/text by default for generated figures
+set(groot, 'defaultAxesFontWeight', 'bold', 'defaultAxesFontSize', 14, ...
+    'defaultTextColor', 'k', 'defaultAxesXColor', 'k', 'defaultAxesYColor', 'k', 'defaultAxesZColor', 'k');
 
 win = hamming(config.win_len);
 ref_mic = config.ref_mic;
@@ -109,8 +112,9 @@ title(sprintf('Covariance Eigenspectrum at %.0f Hz', F(k2k)));
 grid on;
 set(gca, 'LineWidth', 1.5);
 if config.save_figures
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Rxx_eigenspectrum_2kHz.pdf'), ...
-        'ContentType','image');
+    'ContentType','vector', 'BackgroundColor','white');
 end
 
 % Beampattern at 2 kHz
@@ -151,8 +155,9 @@ title(sprintf('Target-Steered Beampattern at %.0f Hz', F(k2k)));
 grid on;
 set(gca, 'LineWidth', 1.5);
 if config.save_figures
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Beampattern_2kHz.pdf'), ...
-        'ContentType','image');
+    'ContentType','vector', 'BackgroundColor','white');
 end
 
 %% 5. Beampattern and diagnostics at 4 kHz (interference)
@@ -208,7 +213,8 @@ title('Target Signal (Mic 1)');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Target_signal.pdf'), 'ContentType','image');
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Target_signal.pdf'), 'ContentType','vector', 'BackgroundColor','white');
 end
 
 figure(206); clf;
@@ -218,7 +224,8 @@ title('Received Signal with Interference (Mic 1)');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Received_signal.pdf'), 'ContentType','image');
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Received_signal.pdf'), 'ContentType','vector', 'BackgroundColor','white');
 end
 
 figure(207); clf;
@@ -226,12 +233,14 @@ t_mvdr = (0:length(y_mvdr_target)-1) / config.fs;
 plot(t_mvdr, y_mvdr_target, 'b', 'LineWidth', 1.5); hold on;
 plot(t_mvdr, y_mvdr_interf, 'm', 'LineWidth', 1.5);
 xlabel('Time (s)'); ylabel('Amplitude');
-legend('Target-steered', 'Interference-steered', 'Location', 'best');
+h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 title('MVDR Beamformer Outputs');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'MVDR_outputs.pdf'), 'ContentType','image');
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'MVDR_outputs.pdf'), 'ContentType','vector', 'BackgroundColor','white');
 end
 
 %% 7. Performance bar chart
@@ -241,12 +250,14 @@ figure(208); clf;
 bar([SNR_in_dB, SNR_out_dB; ISR_in_dB, ISR_out_dB]);
 set(gca, 'XTickLabel', {'Target-steered', 'Interference-steered'});
 ylabel('Ratio (dB)');
-legend('Before MVDR', 'After MVDR', 'Location', 'best');
+h = legend('Before MVDR', 'After MVDR', 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Performance_improvement.pdf'), ...
-        'ContentType','image');
+    'ContentType','vector', 'BackgroundColor','white');
 end
 
 %% 8. PSD comparison
@@ -263,11 +274,13 @@ plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
 plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
 xlim([0 config.fs/2]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
-legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best');
+h = legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_fullband.pdf'), 'ContentType','image');
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_fullband.pdf'), 'ContentType','vector', 'BackgroundColor','white');
 end
 
 figure(210); clf;
@@ -276,12 +289,14 @@ plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
 plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
 xlim([3500 4500]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
-legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best');
+h = legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 title('PSD around 4 kHz (Interference)');
 grid on;
 set(gca, 'LineWidth', 1);
 if config.save_figures
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_4kHz.pdf'), 'ContentType','image');
+    set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_4kHz.pdf'), 'ContentType','vector', 'BackgroundColor','white');
 end
 
 fprintf('[Diagnostics] Visualization complete.\n\n');

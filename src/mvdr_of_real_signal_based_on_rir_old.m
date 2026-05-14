@@ -30,8 +30,9 @@ scatter(X, Y, 40, 'filled');
 % title('Microphone Array Geometry');
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Microphone Array Geometry.pdf', ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 
 %% ========== 2. Room, RIR and signals parameters ==========
@@ -122,8 +123,9 @@ view(45, 25);
 % legend({'Room boundary','Microphones','Target Source','Interference'}, 'Location','best');
 %%
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Room, Sources, and Microphone Array Layout.pdf', ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 
 %% ========== 3. Fraunhofer check (far-field criterion) ==========
@@ -651,8 +653,9 @@ figure(3); plot(1:Nmic, 10*log10(evals + eps), '-o');
 xlabel('Index'); ylabel('Eigenvalue (dB)'); 
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Rxx eig-spectrum at 2 kHz.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 % title('Rxx eig-spectrum at ~2 kHz');
 
 % compute MVDR weight used at k2 for the center frame
@@ -690,8 +693,9 @@ xlabel('Azimuth (deg)'); ylabel('Response (dB)');
 % title(sprintf('Beampattern at %.1f Hz', F(k2)));
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Beampattern at 2k Hz.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 fprintf('Diagnostic done. See eig-spectrum and beampattern for 2 kHz.\n');
 
 
@@ -777,8 +781,9 @@ plot(azs_4k(az_interf), resp_4k(az_interf), 'mv', 'MarkerSize', 10, 'LineWidth',
 legend({'Beam response', 'Target direction', 'Interference direction'});
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Beampattern at 4k Hz.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 fprintf('4 kHz diagnostic complete. Check beampattern to verify interference suppression.\n');
 
@@ -872,8 +877,9 @@ legend({'Before MVDR','After MVDR'}, 'Location', 'best');
 grid on;
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'MVDR Ratio Improvement (Dual Beam).pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 
 % ========== 10. Diagnostics: waveforms, spectrograms, PSD ==========
@@ -883,8 +889,9 @@ plot(t1, X_target(:,1));
 xlabel('Time (s)');
 ylabel('Amplitude');
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Target signal.pdf', ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(8);
 t2 = (0:length(X_noisy(:,1))-1)/fs;
@@ -892,8 +899,9 @@ plot(t2, X_noisy(:,1));
 xlabel('Time (s)');
 ylabel('Amplitude');
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Noisy signal.pdf', ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(9);
 t3 = (0:length(y_mvdr_target)-1)/fs;
@@ -903,8 +911,9 @@ xlabel('Time (s)');
 ylabel('Amplitude');
 legend({'Target-steered output','Interference-steered output'});
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'MVDR dual outputs.pdf', ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 
 figure(10);
@@ -914,8 +923,9 @@ ylabel('Frequency(kHz)');
 c = colorbar;
 c.Label.String = 'Power/Frequency (dB/Hz)';
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Target spectrogram.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(11);
 spectrogram(X_noisy(:,1), hamming(256), 128, 512, fs, 'yaxis');
@@ -924,8 +934,9 @@ ylabel('Frequency(kHz)');
 c = colorbar;
 c.Label.String = 'Power/Frequency (dB/Hz)';
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Noisy spectrogram.pdf', 'Resolution',300, ...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(12);
 spectrogram(y_mvdr_target, hamming(256), 128, 512, fs, 'yaxis');
@@ -934,8 +945,9 @@ ylabel('Frequency(kHz)');
 c = colorbar;
 c.Label.String = 'Power/Frequency (dB/Hz)';
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'MVDR target-beam spectrogram.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(13);
 spectrogram(y_mvdr_interf, hamming(256), 128, 512, fs, 'yaxis');
@@ -944,8 +956,9 @@ ylabel('Frequency(kHz)');
 c = colorbar;
 c.Label.String = 'Power/Frequency (dB/Hz)';
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'MVDR interference-beam spectrogram.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 % 处理前后频谱图（目标指向）
 figure(14); clf;
@@ -961,8 +974,9 @@ ax17 = findall(gcf, 'Type', 'Axes');
 clim17 = max(cell2mat(arrayfun(@(ax) ax.CLim, ax17, 'UniformOutput', false)), [], 1);
 arrayfun(@(ax) caxis(ax, clim17), ax17);
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Before-After Spectrogram (Target Beam).pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 % 处理前后频谱图（干扰指向）
 figure(15); clf;
@@ -978,8 +992,9 @@ ax18 = findall(gcf, 'Type', 'Axes');
 clim18 = max(cell2mat(arrayfun(@(ax) ax.CLim, ax18, 'UniformOutput', false)), [], 1);
 arrayfun(@(ax) caxis(ax, clim18), ax18);
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'Before-After Spectrogram (Interference Beam).pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 
 % PSD comparison
@@ -997,8 +1012,9 @@ xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
 legend({'Before MVDR','After Target-steered','After Interference-steered'});
 grid on;
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'PSD Fullband Dual MVDR.pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(17); clf;
 plot(Fp, 10*log10(Pxx_in + eps), 'k'); hold on;
@@ -1007,8 +1023,9 @@ xlim([1800 2200]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
 legend({'Before MVDR','After Target-steered'});
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'PSD around 2 kHz (Target Beam).pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
 
 figure(18); clf;
 plot(Fp, 10*log10(Pxx_in + eps), 'k'); hold on;
@@ -1032,5 +1049,6 @@ fprintf('After Interference-steered: %.2f dB/Hz\n', psd_int_4k);
 fprintf('============================\n');
 
 set(gca, 'LineWidth', 1);
+set(gcf,'InvertHardcopy','off'); set(gcf,'Color','white'); set(gca,'Color','white');
 exportgraphics(gcf, 'PSD around 4 kHz (Dual Beam).pdf', 'Resolution',300,...
-    'ContentType','image');
+    'ContentType','image', 'BackgroundColor','white');
