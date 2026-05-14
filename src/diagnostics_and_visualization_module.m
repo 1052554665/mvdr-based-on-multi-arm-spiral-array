@@ -261,35 +261,111 @@ tiledlayout(2,3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 nexttile;
 plot(t_cmp, x_target_cmp, 'b', 'LineWidth', 1.1);
-title('Input Target (Mic 1)'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, x_interf_cmp, 'm', 'LineWidth', 1.1);
-title('Input Interference (Mic 1)'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, x_noisy_cmp, 'k', 'LineWidth', 1.1);
-title('Input Received (Mic 1)'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('Input Received (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_target_cmp, 'b', 'LineWidth', 1.1);
-title('MVDR Processed Target'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('MVDR Processed Target'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_interf_cmp, 'm', 'LineWidth', 1.1);
-title('MVDR Processed Interference'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_recv_cmp, 'k', 'LineWidth', 1.1);
-title('MVDR Processed Received'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
-sgtitle('Input vs MVDR-Processed Signals');
+% sg = sgtitle('Input vs MVDR-Processed Signals');
+% set(sg, 'Color', 'k', 'FontWeight', 'bold', 'FontName', 'Times New Roman', 'FontSize', 20);
 set(findall(gcf,'type','axes'), 'LineWidth', 1);
 set(gcf, 'Color', 'white');
 set(findall(gcf,'type','axes'), 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
 if config.save_figures
     set(gcf,'Color','white');
     exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Signal_comparison_input_vs_mvdr.pdf'), ...
+        'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
+end
+
+% IEEE-style overview: one figure with input vs MVDR-processed spectrograms
+spec_win = hamming(256);
+spec_overlap = 128;
+spec_nfft = 512;
+
+[S_xt, Fspec, Tspec] = spectrogram(X_target(1:Lcmp,1), spec_win, spec_overlap, spec_nfft, config.fs);
+[S_xi, ~, ~] = spectrogram(X_interf(1:Lcmp,1), spec_win, spec_overlap, spec_nfft, config.fs);
+[S_xr, ~, ~] = spectrogram(X_noisy(1:Lcmp,1), spec_win, spec_overlap, spec_nfft, config.fs);
+
+[S_yt, ~, ~] = spectrogram(y_target_cmp, spec_win, spec_overlap, spec_nfft, config.fs);
+[S_yi, ~, ~] = spectrogram(y_interf_cmp, spec_win, spec_overlap, spec_nfft, config.fs);
+[S_yr, ~, ~] = spectrogram(y_recv_cmp, spec_win, spec_overlap, spec_nfft, config.fs);
+
+P_xt = 10*log10(abs(S_xt).^2 + eps);
+P_xi = 10*log10(abs(S_xi).^2 + eps);
+P_xr = 10*log10(abs(S_xr).^2 + eps);
+P_yt = 10*log10(abs(S_yt).^2 + eps);
+P_yi = 10*log10(abs(S_yi).^2 + eps);
+P_yr = 10*log10(abs(S_yr).^2 + eps);
+
+all_spec_vals = [P_xt(:); P_xi(:); P_xr(:); P_yt(:); P_yi(:); P_yr(:)];
+spec_clim_max = max(all_spec_vals);
+spec_clim_min = spec_clim_max - 80;
+
+figure(212); clf;
+tiledlayout(2,3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile;
+imagesc(Tspec, Fspec, P_xt); axis xy;
+t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_xi); axis xy;
+t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_xr); axis xy;
+t = title('Input Received (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_yt); axis xy;
+t = title('MVDR Processed Target'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_yi); axis xy;
+t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_yr); axis xy;
+t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Frequency (Hz)');
+ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]);
+
+colormap(turbo);
+set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
+cb = colorbar;
+cb.Layout.Tile = 'east';
+cb.Label.String = 'Power/Frequency (dB)';
+cb.Color = 'k';
+cb.FontWeight = 'bold';
+cb.Label.Color = 'k';
+cb.Label.FontWeight = 'bold';
+% sg = sgtitle('Input vs MVDR-Processed Spectrograms', 'Color', 'k', 'FontWeight', 'bold');
+% set(sg, 'Color', 'k', 'FontName', 'Times New Roman', 'FontSize', 20);
+set(gcf, 'Color', 'white');
+if config.save_figures
+    set(gcf,'Color','white');
+    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Signal_comparison_spectrograms_input_vs_mvdr.pdf'), ...
         'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
 end
 
