@@ -6,11 +6,8 @@
 set(groot, ...
     'defaultAxesFontName','Times New Roman', ...
     'defaultTextFontName','Times New Roman', ...
-    'defaultAxesFontSize',26, ...
-    'defaultTextFontSize',30, ...
-    'defaultLineLineWidth',1.2, ...
-    'defaultAxesTitleFontSizeMultiplier',1.2, ...   % 标题 = 1.2 * 全局字号
-    'defaultAxesLabelFontSizeMultiplier',1.0);     % 轴标签 = 1.0 * 全局字号
+    'defaultLineLineWidth',1.2);
+    % Note: Font size settings are managed in individual modules (e.g., diagnostics_and_visualization_module)
 %% Audio and signal parameters
 config.c = 340;                    % Speed of sound (m/s)
 config.fs = 16000;                 % Sampling frequency (Hz)
@@ -76,9 +73,9 @@ config.output_dir = '../output';   % Output directory for figures
 %% File paths (relative to src/ directory)
 config.data_dir = '../data';
 config.mic_pos_file = '../data/mic_positions.xlsx';
-% config.target_audio = '../data/audio/Loosen1_60.wav';
-% config.interf_audio = '../data/audio/Normal_part92.wav';
-config.target_audio = '../data/audio/sine_wave_2k.wav';
-config.interf_audio = '../data/audio/sine_wave_4k.wav';
+config.target_audio = '../data/audio/Loosen1_60.wav';
+config.interf_audio = '../data/audio/Normal_part92.wav';
+% config.target_audio = '../data/audio/sine_wave_2k.wav';
+% config.interf_audio = '../data/audio/sine_wave_4k.wav';
 
 fprintf('[Config] Configuration loaded.\n');
