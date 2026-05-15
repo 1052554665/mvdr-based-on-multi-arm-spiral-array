@@ -10,6 +10,29 @@ fprintf('\n[Diagnostics] Starting diagnostics and visualization...\n');
 set(groot, 'defaultAxesFontWeight', 'bold', 'defaultAxesFontSize', 14, ...
     'defaultTextColor', 'k', 'defaultAxesXColor', 'k', 'defaultAxesYColor', 'k', 'defaultAxesZColor', 'k');
 
+%% Define figure output paths
+figures_dir = fullfile(config.output_dir, 'demo');
+path_eigenspectrum_2kHz = fullfile(figures_dir, 'Rxx_eigenspectrum_2kHz.pdf');
+path_beampattern_2kHz = fullfile(figures_dir, 'Beampattern_2kHz.pdf');
+path_target_signal = fullfile(figures_dir, 'Target_signal.pdf');
+path_received_signal = fullfile(figures_dir, 'Received_signal.pdf');
+path_mvdr_outputs = fullfile(figures_dir, 'MVDR_outputs.pdf');
+path_signal_comparison = fullfile(figures_dir, 'Signal_comparison_input_vs_mvdr.pdf');
+path_spectrograms = fullfile(figures_dir, 'Signal_comparison_spectrograms_input_vs_mvdr.pdf');
+path_performance_improvement = fullfile(figures_dir, 'Performance_improvement.pdf');
+path_psd_fullband = fullfile(figures_dir, 'PSD_fullband.pdf');
+path_psd_4kHz = fullfile(figures_dir, 'PSD_4kHz.pdf');
+%% Figure save helper function
+save_figure = @(fig_path) save_fig_func(config, fig_path);
+    function save_fig_func(config, fig_path)
+        if config.save_figures
+            set(gcf,'Color','white');
+            set(gca,'Color','white');
+            exportgraphics(gcf, fig_path, ...
+                'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
+        end
+    end
+
 win = hamming(config.win_len);
 ref_mic = config.ref_mic;
 
@@ -106,16 +129,12 @@ Rxx_diag = Rxx_diag + reg_diag * eye(Nmic);
 evals = sort(diag(D), 'descend');
 
 figure(203); clf;
-plot(1:Nmic, 10*log10(evals + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8);
+plot(1:Nmic, 10*log10(evals + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k');
 xlabel('Index'); ylabel('Eigenvalue (dB)');
-title(sprintf('Covariance Eigenspectrum at %.0f Hz', F(k2k)));
+% title(sprintf('Covariance Eigenspectrum at %.0f Hz', F(k2k)));
 grid on;
 set(gca, 'LineWidth', 1.5);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Rxx_eigenspectrum_2kHz.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_eigenspectrum_2kHz);
 
 % Beampattern at 2 kHz
 center_frame = round(numFrames/2);
@@ -149,16 +168,12 @@ for ii = 1:length(azs)
 end
 
 figure(204); clf;
-plot(azs, resp_2k, 'LineWidth', 2);
+plot(azs, resp_2k, 'LineWidth', 2, 'Color', 'k');
 xlabel('Azimuth (deg)'); ylabel('Response (dB)');
-title(sprintf('Target-Steered Beampattern at %.0f Hz', F(k2k)));
+% title(sprintf('Target-Steered Beampattern at %.0f Hz', F(k2k)));
 grid on;
 set(gca, 'LineWidth', 1.5);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Beampattern_2kHz.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_beampattern_2kHz);
 
 %% 5. Beampattern and diagnostics at 4 kHz (interference)
 fprintf('[Diagnostics] Computing 4 kHz diagnostics (interference frequency)...\n');
@@ -212,10 +227,7 @@ xlabel('Time (s)'); ylabel('Amplitude');
 title('Target Signal (Mic 1)');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Target_signal.pdf'), 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_target_signal);
 
 figure(206); clf;
 plot(t_axis, X_noisy(:,1), 'LineWidth', 1.5);
@@ -223,10 +235,7 @@ xlabel('Time (s)'); ylabel('Amplitude');
 title('Received Signal with Interference (Mic 1)');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Received_signal.pdf'), 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_received_signal);
 
 figure(207); clf;
 t_mvdr = (0:length(y_mvdr_target)-1) / config.fs;
@@ -238,10 +247,7 @@ set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 title('MVDR Beamformer Outputs');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'MVDR_outputs.pdf'), 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_mvdr_outputs);
 
 % IEEE-style overview: one figure with input vs MVDR-processed waveforms
 Lcmp = min([length(X_target(:,1)), length(X_interf(:,1)), length(X_noisy(:,1)), ...
@@ -288,11 +294,7 @@ t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontName', 'Times Ne
 set(findall(gcf,'type','axes'), 'LineWidth', 1);
 set(gcf, 'Color', 'white');
 set(findall(gcf,'type','axes'), 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
-if config.save_figures
-    set(gcf,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Signal_comparison_input_vs_mvdr.pdf'), ...
-        'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_signal_comparison);
 
 % IEEE-style overview: one figure with input vs MVDR-processed spectrograms
 spec_win = hamming(256);
@@ -363,11 +365,7 @@ cb.Label.FontWeight = 'bold';
 % sg = sgtitle('Input vs MVDR-Processed Spectrograms', 'Color', 'k', 'FontWeight', 'bold');
 % set(sg, 'Color', 'k', 'FontName', 'Times New Roman', 'FontSize', 20);
 set(gcf, 'Color', 'white');
-if config.save_figures
-    set(gcf,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Signal_comparison_spectrograms_input_vs_mvdr.pdf'), ...
-        'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_spectrograms);
 
 %% 7. Performance bar chart
 fprintf('[Diagnostics] Generating performance chart...\n');
@@ -380,11 +378,7 @@ h = legend('Before MVDR', 'After MVDR', 'Location', 'best');
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'Performance_improvement.pdf'), ...
-    'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_performance_improvement);
 
 %% 8. PSD comparison
 fprintf('[Diagnostics] Computing power spectral densities...\n');
@@ -449,10 +443,7 @@ h = legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best'
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_fullband.pdf'), 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_psd_fullband);
 
 figure(210); clf;
 plot(Fp, 10*log10(Pxx_in + eps), 'k', 'LineWidth', 1.5); hold on;
@@ -462,13 +453,10 @@ xlim([3500 4500]);
 xlabel('Frequency (Hz)'); ylabel('PSD (dB/Hz)');
 h = legend('Input', 'Target-steered', 'Interference-steered', 'Location', 'best');
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
-title('PSD around 4 kHz (Interference)');
+% title('PSD around 4 kHz (Interference)');
 grid on;
 set(gca, 'LineWidth', 1);
-if config.save_figures
-    set(gcf,'Color','white'); set(gca,'Color','white');
-    exportgraphics(gcf, fullfile(config.output_dir, 'figures', 'PSD_4kHz.pdf'), 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
-end
+save_figure(path_psd_4kHz);
 
 fprintf('[Diagnostics] Visualization complete.\n\n');
 

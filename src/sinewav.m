@@ -2,7 +2,7 @@
 % Parameters
 fs = 44100;        % Sampling frequency (Hz)
 duration = 1;      % Duration (seconds)
-frequency = 1000;   % Sine wave frequency (Hz)
+frequency = 2000;   % Sine wave frequency (Hz)
 amplitude = 0.8;   % Amplitude (0 to 1)
 
 % Generate time vector
@@ -12,7 +12,7 @@ t = linspace(0, duration, fs * duration);
 sineWave = amplitude * sin(2 * pi * frequency * t);
 
 % Save as WAV file
-audiowrite('sine_wave_1k.wav', sineWave, fs);
+audiowrite('sine_wave_2k.wav', sineWave, fs);
 
 % Plot the waveform
 plot(t, sineWave);
