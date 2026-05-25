@@ -14,6 +14,7 @@ set(groot, 'defaultAxesFontWeight', 'bold', 'defaultAxesFontSize', 12, ...
 figures_dir = fullfile(config.output_dir, 'demo');
 % figures_dir = fullfile(config.output_dir, 'figures');
 path_eigenspectrum_2kHz = fullfile(figures_dir, 'Rxx_eigenspectrum_2kHz.pdf');
+path_eigenspectrum_fullband = fullfile(figures_dir, 'Rxx_eigenspectrum_fullband.pdf');
 path_beampattern_2kHz = fullfile(figures_dir, 'Beampattern_2kHz.pdf');
 path_target_signal = fullfile(figures_dir, 'Target_signal.pdf');
 path_received_signal = fullfile(figures_dir, 'Received_signal.pdf');
@@ -206,6 +207,10 @@ Rxx_diag = Rxx_diag + reg_diag * eye(Nmic);
 [~, D] = eig(Rxx_diag);
 evals = sort(diag(D), 'descend');
 
+fprintf('[Diagnostics] 2kHz eigenspectrum:\n');
+fprintf('  Max eigenvalue: %.4e\n', evals(1));
+fprintf('  Top 3 eigenvalues: %.4e, %.4e, %.4e\n', evals(1), evals(2), evals(3));
+
 figure(203); clf;
 plot(1:Nmic, 10*log10(evals + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k');
 xlabel('Index', 'FontSize', font_sz.label); ylabel('Eigenvalue (dB)', 'FontSize', font_sz.label);
@@ -213,6 +218,99 @@ xlabel('Index', 'FontSize', font_sz.label); ylabel('Eigenvalue (dB)', 'FontSize'
 grid on;
 set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
 save_figure(path_eigenspectrum_2kHz);
+
+% Full-band eigenspectrum (time-domain mixed signal including both 2kHz and 4kHz)
+fprintf('[Diagnostics] Computing full-band eigenspectrum...\n');
+t1_full = max(1, round(numFrames*0.35));
+t2_full = min(size(X_noisy, 1), round(Nt*0.65));
+Xloc_full = X_noisy(t1_full:t2_full, :).';  % (Nmic, Nsamples_windowed)
+Rxx_full = (Xloc_full * Xloc_full') / size(Xloc_full, 2);
+reg_full = config.epsilon * trace(Rxx_full) / Nmic;
+Rxx_full = Rxx_full + reg_full * eye(Nmic);
+
+[~, D_full] = eig(Rxx_full);
+evals_full = sort(diag(D_full), 'descend');
+
+fprintf('  Max eigenvalue: %.4e\n', evals_full(1));
+fprintf('  Top 3 eigenvalues: %.4e, %.4e, %.4e\n', evals_full(1), evals_full(2), evals_full(3));
+fprintf('  Eigenvalue ratio (1st/2nd): %.2f\n', evals_full(1)/max(evals_full(2), eps));
+
+% Full eigenvalue analysis - detect number of signal sources
+fprintf('\n  === Full Eigenvalue Spectrum Analysis ===\n');
+fprintf('  Eigenvalue Index    Value         Ratio to Max   dB\n');
+fprintf('  %-18s %-13s %-14s %s\n', '---', '---', '---', '---');
+for i = 1:min(Nmic, length(evals_full))
+    ratio_to_max = evals_full(i) / (evals_full(1) + eps);
+    db_val = 10*log10(evals_full(i) + eps);
+    fprintf('  %-18d %.4e        %.4f        %.2f\n', i, evals_full(i), ratio_to_max, db_val);
+end
+
+% Detect number of signal sources using threshold
+threshold = 0.01;  % Eigenvalues > 1% of max are signal sources
+num_signals = sum(evals_full > threshold * evals_full(1));
+fprintf('\n  Estimated # of signal sources (threshold=%.1f%% of max): %d\n', threshold*100, num_signals);
+fprintf('  Condition number: %.2e\n', evals_full(1) / (evals_full(end) + eps));
+
+% Additional analysis: Find the "elbow" in the eigenvalue curve
+% (where eigenvalues drop significantly)
+diffs = diff(evals_full);
+rel_diffs = abs(diffs) ./ evals_full(1:end-1);
+[max_rel_diff, elbow_idx] = max(rel_diffs);
+fprintf('  Largest relative drop at index %d->%d (%.1f%%)\n', elbow_idx, elbow_idx+1, max_rel_diff*100);
+fprintf('  Signal subspace dimension (by elbow): %d\n', elbow_idx);
+
+figure(214); clf;
+plot(1:Nmic, 10*log10(evals_full + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'r');
+xlabel('Index', 'FontSize', font_sz.label); ylabel('Eigenvalue (dB)', 'FontSize', font_sz.label);
+grid on;
+set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
+save_figure(path_eigenspectrum_fullband);
+
+% Comparison plot: Normalized 2kHz vs Fullband eigenspectra
+figure(215); clf;
+evals_norm = evals / max(evals);
+evals_full_norm = evals_full / max(evals_full);
+semilogy(1:Nmic, evals_norm, '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k', 'DisplayName', '2kHz only'); hold on;
+semilogy(1:Nmic, evals_full_norm, '-s', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'r', 'DisplayName', 'Full-band (2k+4k)');
+xlabel('Eigenvalue Index', 'FontSize', font_sz.label); ylabel('Normalized Eigenvalue', 'FontSize', font_sz.label);
+legend('FontSize', font_sz.legend, 'Location', 'best');
+grid on;
+set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
+set(gcf, 'Color', 'white');
+set(gca, 'Color', 'white');
+path_eigenspectrum_comparison = fullfile(figures_dir, 'Eigenspectrum_comparison_2kHz_vs_fullband.pdf');
+save_figure(path_eigenspectrum_comparison);
+
+% Detailed eigenvalue analysis figure
+figure(216); clf;
+ax1 = subplot(2,1,1);
+semilogy(1:min(10, length(evals_full)), evals_full(1:min(10, length(evals_full))), '-o', 'LineWidth', 2.5, 'MarkerSize', 10, 'Color', 'r');
+hold on;
+yline(0.01 * evals_full(1), '--', 'LineWidth', 1.5, 'Color', 'b', 'DisplayName', '1% threshold');
+yline(evals_full(end), '--', 'LineWidth', 1.5, 'Color', 'g', 'DisplayName', 'Noise floor');
+xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
+ylabel('Eigenvalue', 'FontSize', font_sz.label);
+title('Full-band Eigenvalue Spectrum (Top 10)', 'FontSize', font_sz.title);
+legend('FontSize', font_sz.legend, 'Location', 'best');
+grid on;
+set(ax1, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
+
+% Relative magnitude plot
+ax2 = subplot(2,1,2);
+rel_evals = evals_full / evals_full(1) * 100;
+bar(1:min(10, length(rel_evals)), rel_evals(1:min(10, length(rel_evals))), 'FaceColor', 'r', 'EdgeColor', 'k', 'LineWidth', 1.5);
+hold on;
+yline(1, '--', 'LineWidth', 1.5, 'Color', 'b', 'DisplayName', '1% threshold');
+xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
+ylabel('Relative Magnitude (%)', 'FontSize', font_sz.label);
+title('Relative Eigenvalue Magnitudes', 'FontSize', font_sz.title);
+legend('FontSize', font_sz.legend, 'Location', 'best');
+set(ax2, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'YScale', 'log');
+grid on;
+
+set(gcf, 'Color', 'white');
+path_eigenanalysis = fullfile(figures_dir, 'Eigenvalue_detailed_analysis.pdf');
+save_figure(path_eigenanalysis);
 
 % Beampattern at 2 kHz
 center_frame = round(numFrames/2);
