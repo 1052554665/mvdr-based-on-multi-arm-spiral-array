@@ -218,16 +218,27 @@ for k = f_start:f_limit
                 t1 = max(1, n - floor(config.Mavg/2));
                 t2 = min(Tframes, n + floor(config.Mavg/2));
                 Xloc = Xkf_cov(:, t1:t2);
-                
+
                 Rxx = (Xloc * Xloc') / size(Xloc,2);
-                
+
                 if config.shrink_alpha > 0
                     mu = trace(Rxx) / Nmic;
                     Rxx = (1 - config.shrink_alpha) * Rxx + config.shrink_alpha * mu * eye(Nmic, 'like', Rxx);
                 end
-                
+
                 Rxx = Rxx + config.epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
-                w = Rxx \ a;
+
+                if config.M_signal > 0 && config.M_signal < Nmic
+                    [V, D] = eig(Rxx);
+                    [evals_sorted, idx] = sort(diag(D), 'descend');
+                    V_signal = V(:, idx(1:config.M_signal));
+                    D_signal = diag(evals_sorted(1:config.M_signal));
+                    Rxx_signal = V_signal * D_signal * V_signal';
+                    w = Rxx_signal \ a;
+                else
+                    w = Rxx \ a;
+                end
+
                 denom = a' * w;
                 if abs(denom) < 1e-12
                     w = zeros(Nmic, 1, 'like', a);
@@ -236,7 +247,7 @@ for k = f_start:f_limit
                 end
                 w_last = w;
             end
-            
+
             Y(k,n) = w_last' * Xkf(:,n);
             Y_comp1(k,n) = w_last' * Xkf_comp1(:,n);
             Y_comp2(k,n) = w_last' * Xkf_comp2(:,n);
@@ -249,14 +260,25 @@ for k = f_start:f_limit
             Rxx = (1 - config.shrink_alpha) * Rxx + config.shrink_alpha * mu * eye(Nmic, 'like', Rxx);
         end
         Rxx = Rxx + config.epsilon * trace(Rxx)/Nmic * eye(Nmic, 'like', Rxx);
-        w = Rxx \ a;
+
+        if config.M_signal > 0 && config.M_signal < Nmic
+            [V, D] = eig(Rxx);
+            [evals_sorted, idx] = sort(diag(D), 'descend');
+            V_signal = V(:, idx(1:config.M_signal));
+            D_signal = diag(evals_sorted(1:config.M_signal));
+            Rxx_signal = V_signal * D_signal * V_signal';
+            w = Rxx_signal \ a;
+        else
+            w = Rxx \ a;
+        end
+
         denom = a' * w;
         if abs(denom) < 1e-12
             w = zeros(Nmic, 1, 'like', a);
         else
             w = w / denom;
         end
-        
+
         Y(k,:) = w' * Xkf;
         Y_comp1(k,:) = w' * Xkf_comp1;
         Y_comp2(k,:) = w' * Xkf_comp2;

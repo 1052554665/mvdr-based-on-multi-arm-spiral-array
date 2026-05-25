@@ -41,6 +41,7 @@ config.mvdr_progress_step = 20;    % Print progress every N bins
 config.Mavg = 31;                  % Averaging window for covariance (frames)
 config.epsilon = 1e-4;             % Base diagonal loading (relative scale)
 config.shrink_alpha = 0.01;        % Shrinkage factor (0..0.3)
+config.M_signal = 2;               % Signal subspace dimension (0=full rank)
 
 %% Oracle covariance modes (for debug/upper bound evaluation)
 config.use_oracle_intnoi_cov = true;   % Use true interference+noise cov (target-steered)
