@@ -73,9 +73,9 @@ config.output_dir = '../output';   % Output directory for figures
 %% File paths (relative to src/ directory)
 config.data_dir = '../data';
 config.mic_pos_file = '../data/mic_positions.xlsx';
-config.target_audio = '../data/audio/Loosen1_60.wav';
-config.interf_audio = '../data/audio/Normal_part92.wav';
-% config.target_audio = '../data/audio/sine_wave_2k.wav';
-% config.interf_audio = '../data/audio/sine_wave_4k.wav';
+% config.target_audio = '../data/audio/Loosen1_60.wav';
+% config.interf_audio = '../data/audio/Normal_part92.wav';
+config.target_audio = '../data/audio/sine_wave_2k.wav';
+config.interf_audio = '../data/audio/sine_wave_4k.wav';
 
 fprintf('[Config] Configuration loaded.\n');

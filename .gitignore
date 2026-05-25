@@ -1,7 +1,5 @@
 # 数据集
 datasets/
-data/
-*.csv
 *.npy
 *.mat
 
@@ -16,11 +14,6 @@ logs/
 runs/
 *.log
 
-# 可视化结果
-figures/
-*.png
-*.jpg
-
 # Python缓存
 __pycache__/
 *.pyc
@@ -34,11 +27,9 @@ Thumbs.db
 .idea/
 
 # document
-*.pdf
 *.doc
 *.docx
 
 # audio file
-*.wav
 *.mp3
 *.aac

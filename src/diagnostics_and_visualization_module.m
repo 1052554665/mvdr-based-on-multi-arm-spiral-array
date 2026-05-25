@@ -11,8 +11,8 @@ set(groot, 'defaultAxesFontWeight', 'bold', 'defaultAxesFontSize', 12, ...
     'defaultTextColor', 'k', 'defaultAxesXColor', 'k', 'defaultAxesYColor', 'k', 'defaultAxesZColor', 'k');
 
 %% Define figure output paths
-% figures_dir = fullfile(config.output_dir, 'demo');
-figures_dir = fullfile(config.output_dir, 'figures');
+figures_dir = fullfile(config.output_dir, 'demo');
+% figures_dir = fullfile(config.output_dir, 'figures');
 path_eigenspectrum_2kHz = fullfile(figures_dir, 'Rxx_eigenspectrum_2kHz.pdf');
 path_beampattern_2kHz = fullfile(figures_dir, 'Beampattern_2kHz.pdf');
 path_target_signal = fullfile(figures_dir, 'Target_signal.pdf');
@@ -320,8 +320,8 @@ t_mvdr = (0:length(y_mvdr_target)-1) / config.fs;
 plot(t_mvdr, y_mvdr_target, 'b', 'LineWidth', 1.5); hold on;
 plot(t_mvdr, y_mvdr_interf, 'm', 'LineWidth', 1.5);
 xlabel('Time (s)', 'FontSize', font_sz.label); ylabel('Amplitude', 'FontSize', font_sz.label);
-% h = legend('2kHz-steered', '4kHz-steered', 'Location', 'best');
-h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
+h = legend('2kHz-steered', '4kHz-steered', 'Location', 'best');
+% h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k', 'FontSize', font_sz.legend);
 % title('MVDR Beamformer Outputs', 'FontSize', font_sz.title);
 grid on;
