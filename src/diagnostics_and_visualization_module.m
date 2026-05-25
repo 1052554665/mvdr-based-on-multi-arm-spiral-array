@@ -550,6 +550,64 @@ cb.Label.FontSize = font_sz.colorbar_label;
 set(gcf, 'Color', 'white');
 save_figure(path_spectrograms);
 
+%% 6a. MVDR Interference Suppression Comparison (3-tile highlight)
+fprintf('[Diagnostics] Generating MVDR interference suppression comparison...\n');
+
+figure(213); clf;
+tiledlayout(1,3, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+nexttile;
+imagesc(Tspec, Fspec, P_xr); axis xy;
+t = title('Input Received (Mixed)', 'FontWeight', 'bold');
+set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+xlabel('Time (s)', 'FontSize', font_sz.subtitle);
+ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+ylim([0 config.fs/2]);
+caxis([spec_clim_min spec_clim_max]);
+set(gca, 'FontSize', font_sz.small_tick);
+text(0.02, 0.95, '2kHz+4kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+    'VerticalAlignment', 'top', 'BackgroundColor', [0 0 0 0.5]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_yt); axis xy;
+t = title('Target-Steered MVDR (2kHz)', 'FontWeight', 'bold');
+set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+xlabel('Time (s)', 'FontSize', font_sz.subtitle);
+ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+ylim([0 config.fs/2]);
+caxis([spec_clim_min spec_clim_max]);
+set(gca, 'FontSize', font_sz.small_tick);
+text(0.02, 0.95, 'Suppress 4kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+    'VerticalAlignment', 'top', 'BackgroundColor', [0 0.5 0 0.5]);
+
+nexttile;
+imagesc(Tspec, Fspec, P_yi); axis xy;
+t = title('Interference-Steered MVDR (4kHz)', 'FontWeight', 'bold');
+set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+xlabel('Time (s)', 'FontSize', font_sz.subtitle);
+ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+ylim([0 config.fs/2]);
+caxis([spec_clim_min spec_clim_max]);
+set(gca, 'FontSize', font_sz.small_tick);
+text(0.02, 0.95, 'Suppress 2kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+    'VerticalAlignment', 'top', 'BackgroundColor', [0.5 0 0 0.5]);
+
+colormap(turbo);
+set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', 'white', 'XColor', 'k', 'YColor', 'k', 'FontSize', font_sz.small_tick);
+cb = colorbar;
+cb.Layout.Tile = 'east';
+cb.Label.String = 'Power/Frequency (dB)';
+cb.Color = 'k';
+cb.FontWeight = 'bold';
+cb.Label.Color = 'k';
+cb.Label.FontWeight = 'bold';
+cb.FontSize = font_sz.colorbar;
+cb.Label.FontSize = font_sz.colorbar_label;
+set(gcf, 'Color', 'white');
+
+path_mvdr_suppression = fullfile(figures_dir, 'MVDR_interference_suppression_comparison.pdf');
+save_figure(path_mvdr_suppression);
+
 %% 7. Performance bar chart
 fprintf('[Diagnostics] Generating performance chart...\n');
 

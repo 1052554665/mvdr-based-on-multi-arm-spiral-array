@@ -330,3 +330,73 @@ PSD 在 0 dB/Hz 以下只说明该频点功率密度小于参考 1，不是异�
 
 # MVDR上限频率
 你的采样率是 16 kHz，所以 8 kHz 正好到奈奎斯特频率，能跑，但高频段对阵列间距和空间混叠会更敏感；如果后面发现 8 kHz 附近波束不够稳，可以再把上限稍微收一点，比如 6 kHz 或 7 kHz
+
+
+
+# fig212 六张图完整说明
+
+| 位置 | 标题 | 说明 |
+|------|------|------|
+| **1** | Input Target (Mic 1) | 原始目标信号（麦克风1）|
+| **2** | Input Interference (Mic 1) | 原始干扰信号（麦克风1）|
+| **3** | Input Received (Mic 1) | 原始接收信号（目标+干扰+噪声混合）|
+| **4** | MVDR Processed Target | 目标导向MVDR输出 |
+| **5** | MVDR Processed Interference | 干扰导向MVDR输出 |
+| **6** | **MVDR Processed Received** | **完整MVDR处理后的接收信号** |
+
+## 第6张图的含义
+
+```matlab
+y_mvdr_received = ... % MVDR处理后的综合输出
+```
+
+这是对应 `Yf_tgt` 或 `Yf_int` 的 MVDR 输出，代表：
+- 在**目标导向模式**下，整个接收信号经过目标指向的MVDR波束形成器后的结果
+- 理想情况下应该主要包含**目标成分**，而**干扰被抑制**
+
+## 对比关系
+
+```
+上行(Input):
+  麦克1 → 目标未处理 | 干扰未处理 | 目标+干扰混合
+
+下行(MVDR Output):
+  目标导向MVDR → 增强目标 | 抑制干扰 | 处理后的合成输出(第6张)
+```
+
+**第6张图应该显示**：2kHz 能量明显增强，4kHz 大幅衰减，验证MVDR的有效性。
+
+
+## 第4、5、6张图的数据来源对比
+
+| 图序 | 标题 | 数据来源 | 包含内容 |
+|------|------|--------|--------|
+| **4** | MVDR Processed Target | `Y_tar_tgt` （目标导向MVDR的**目标成分**） | 只有 **2kHz** 信号 |
+| **5** | MVDR Processed Interference | `Y_interf_int` （干扰导向MVDR的**干扰成分**） | 只有 **4kHz** 信号 |
+| **6** | MVDR Processed Received | `Yf_tgt + Yf_int` （两个MVDR的**总输出**相加） | **2kHz + 4kHz** 组合 |
+
+### 代码对应关系
+
+```matlab
+% 第4张图
+y_target_cmp = istft(Y_tar_tgt);      % 目标导向MVDR → 提取目标成分
+spectrogram(y_target_cmp) → P_yt     % 只看2kHz
+
+% 第5张图  
+y_interf_cmp = istft(Y_interf_int);   % 干扰导向MVDR → 提取干扰成分
+spectrogram(y_interf_cmp) → P_yi     % 只看4kHz
+
+% 第6张图
+y_recv_cmp = istft(Yf_tgt) + istft(Yf_int);  % 两个MVDR总输出相加
+spectrogram(y_recv_cmp) → P_yr       % 2kHz + 4kHz 组合信号
+```
+
+### 实际显示效果预期
+
+| 图序 | 应显示内容 |
+|------|---------|
+| **4** | 2kHz 能量强 ✓，4kHz 被抑制 ✗ |
+| **5** | 4kHz 能量强 ✓，2kHz 被抑制 ✗ |
+| **6** | 2kHz + 4kHz 都保留（两个MVDR输出相加） |
+
+**第6张图的作用**：验证两个导向的MVDR是否能互补性地分离2kHz和4kHz。
