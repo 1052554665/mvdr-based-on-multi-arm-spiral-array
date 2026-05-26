@@ -273,8 +273,10 @@ evals_full_norm = evals_full / max(evals_full);
 semilogy(1:Nmic, evals_norm, '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k', 'DisplayName', '2kHz only'); hold on;
 semilogy(1:Nmic, evals_full_norm, '-s', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'r', 'DisplayName', 'Full-band (2k+4k)');
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label); ylabel('Normalized Eigenvalue', 'FontSize', font_sz.label);
-legend('FontSize', font_sz.legend, 'Location', 'best');
+h = legend('FontSize', font_sz.legend, 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
+set(gcf,'InvertHardcopy','off'); 
 set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
 set(gcf, 'Color', 'white');
 set(gca, 'Color', 'white');
@@ -291,9 +293,10 @@ yline(evals_full(end), '--', 'LineWidth', 1.5, 'Color', 'g', 'DisplayName', 'Noi
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Eigenvalue', 'FontSize', font_sz.label);
 title('Full-band Eigenvalue Spectrum (Top 10)', 'FontSize', font_sz.title);
-legend('FontSize', font_sz.legend, 'Location', 'best');
+h = legend('FontSize', font_sz.legend, 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on;
-set(ax1, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
+set(ax1, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
 
 % Relative magnitude plot
 ax2 = subplot(2,1,2);
@@ -304,8 +307,9 @@ yline(1, '--', 'LineWidth', 1.5, 'Color', 'b', 'DisplayName', '1% threshold');
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Relative Magnitude (%)', 'FontSize', font_sz.label);
 title('Relative Eigenvalue Magnitudes', 'FontSize', font_sz.title);
-legend('FontSize', font_sz.legend, 'Location', 'best');
-set(ax2, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'YScale', 'log');
+h = legend('FontSize', font_sz.legend, 'Location', 'best');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
+set(ax2, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'YScale', 'log', 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
 grid on;
 
 set(gcf, 'Color', 'white');
@@ -565,7 +569,7 @@ ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, '2kHz+4kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+text(0.02, 0.95, '2kHz+4kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
     'VerticalAlignment', 'top', 'BackgroundColor', [0 0 0 0.5]);
 
 nexttile;
@@ -577,7 +581,7 @@ ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, 'Suppress 4kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+text(0.02, 0.95, 'Suppress 4kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
     'VerticalAlignment', 'top', 'BackgroundColor', [0 0.5 0 0.5]);
 
 nexttile;
@@ -589,7 +593,7 @@ ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, 'Suppress 2kHz', 'Units', 'normalized', 'FontSize', 10, 'Color', 'w', 'FontWeight', 'bold', ...
+text(0.02, 0.95, 'Suppress 2kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
     'VerticalAlignment', 'top', 'BackgroundColor', [0.5 0 0 0.5]);
 
 colormap(turbo);
