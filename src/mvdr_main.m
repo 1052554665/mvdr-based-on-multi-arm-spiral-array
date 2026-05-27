@@ -33,14 +33,25 @@ fprintf('====================================================\n\n');
 
 %% 1. Load configuration
 fprintf('[Main] Loading configuration...\n');
-load_config;  % Load load_config.m file (defines config structure)
+experiment_name = 'real_signal_dcbias_4k';
+% experiment_name = 'demo_2k_4k';
+config = load_config(experiment_name);  % Swap this to run a different experiment override
 
 %% 2. Create output directories if needed
-if config.save_figures && ~isfolder(config.output_dir)
+if ~isfolder(config.output_dir)
     mkdir(config.output_dir);
-    mkdir(fullfile(config.output_dir, 'figures'));
+end
+
+if config.save_figures && ~isfolder(fullfile(config.output_dir, config.figure_subdir))
+    mkdir(fullfile(config.output_dir, config.figure_subdir));
+end
+
+if ~isfolder(fullfile(config.output_dir, 'results'))
     mkdir(fullfile(config.output_dir, 'results'));
-    fprintf('[Main] Output directories created.\n');
+end
+
+if config.save_figures
+    fprintf('[Main] Output directories ready.\n');
 end
 
 %% 3. Load microphone positions and audio signals

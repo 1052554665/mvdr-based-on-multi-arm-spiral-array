@@ -1,3 +1,43 @@
+# How to use?
+
+## MVDR多参数扫描分析脚本
+
+修改`mvdr_multi_beta_analysis.m`中的配置文件名
+
+```
+config = load_config('real_signal_dcbias_4k');
+
+```
+或
+
+```
+config = load_config('demo_2k_4k');
+
+```
+
+执行
+
+```
+mvdr_multi_beta_analysis.m
+```
+
+## 主程序
+
+修改`mvdr_main.m`中的配置文件名
+
+```
+experiment_name = 'real_signal_dcbias_4k';
+
+```
+
+或
+
+```
+experiment_name = 'demo_2k_4k';
+
+```
+
+
 # 功能实现
 
 - 麦克风坐标读取与处理

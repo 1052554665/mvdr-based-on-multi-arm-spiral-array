@@ -54,7 +54,7 @@ else
 end
 
 fprintf('[Setup] Loading base configuration...\n');
-load_config;
+config = load_config('real_signal_dcbias_4k');
 
 % Update GPU setting
 config.use_gpu = use_gpu_accel;

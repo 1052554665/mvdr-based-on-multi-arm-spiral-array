@@ -10,9 +10,22 @@ fprintf('\n[Diagnostics] Starting diagnostics and visualization...\n');
 set(groot, 'defaultAxesFontWeight', 'bold', 'defaultAxesFontSize', 12, ...
     'defaultTextColor', 'k', 'defaultAxesXColor', 'k', 'defaultAxesYColor', 'k', 'defaultAxesZColor', 'k');
 
+plot_style = config.plot_style;
+font_sz = plot_style.font_sz;
+line_w = plot_style.line_width;
+marker_sz = plot_style.marker_size;
+figure_bg = plot_style.figure_bg;
+axes_bg = plot_style.axes_bg;
+text_color = plot_style.text_color;
+if isfield(plot_style, 'colormap_name')
+    cmap_name = plot_style.colormap_name;
+else
+    cmap_name = 'turbo';
+end
+figure213_annotations = config.figure213_annotations;
+
 %% Define figure output paths
-figures_dir = fullfile(config.output_dir, 'demo');
-% figures_dir = fullfile(config.output_dir, 'figures');
+figures_dir = fullfile(config.output_dir, config.figure_subdir);
 path_eigenspectrum_2kHz = fullfile(figures_dir, 'Rxx_eigenspectrum_2kHz.pdf');
 path_eigenspectrum_fullband = fullfile(figures_dir, 'Rxx_eigenspectrum_fullband.pdf');
 path_beampattern_2kHz = fullfile(figures_dir, 'Beampattern_2kHz.pdf');
@@ -28,21 +41,38 @@ path_mic_array_2d = fullfile(figures_dir, 'Microphone_array_geometry_2d.pdf');
 path_room_layout_3d = fullfile(figures_dir, 'Room_layout_with_sources_3d.pdf');
 
 %% Unified font size settings for publication-quality figures (IEEE standard)
-font_sz.title = 32;          % Main titles for single plots
-font_sz.subtitle = 31;       % Subtitle/axis labels for single plots
-font_sz.label = 31;          % Axis labels (xlabel, ylabel)
-font_sz.subtile_title = 31;  % Titles in subplots (tiledlayout)
-font_sz.legend = 30;         % Legend text
-font_sz.tick = 30;           % Tick labels
-font_sz.small_tick = 29;      % Small tick labels for dense subplots
-font_sz.colorbar = 30;       % Colorbar tick labels
-font_sz.colorbar_label = 30; % Colorbar label
+% Respect per-experiment configuration when present; otherwise use
+% repository defaults. This keeps behavior stable while allowing
+% experiments to override any subset of font sizes.
+default_font_sz.title = 32;          % Main titles for single plots
+default_font_sz.subtitle = 31;       % Subtitle/axis labels for single plots
+default_font_sz.label = 31;          % Axis labels (xlabel, ylabel)
+default_font_sz.subtile_title = 31;  % Titles in subplots (tiledlayout)
+default_font_sz.legend = 30;         % Legend text
+default_font_sz.tick = 30;           % Tick labels
+default_font_sz.small_tick = 29;     % Small tick labels for dense subplots
+default_font_sz.colorbar = 30;       % Colorbar tick labels
+default_font_sz.colorbar_label = 30; % Colorbar label
+
+if ~isfield(plot_style, 'font_sz') || isempty(plot_style.font_sz)
+    font_sz = default_font_sz;
+else
+    font_sz = plot_style.font_sz;
+    % Fill missing fields from defaults
+    fn = fieldnames(default_font_sz);
+    for ii = 1:numel(fn)
+        f = fn{ii};
+        if ~isfield(font_sz, f) || isempty(font_sz.(f))
+            font_sz.(f) = default_font_sz.(f);
+        end
+    end
+end
 %% Figure save helper function
 save_figure = @(fig_path) save_fig_func(config, fig_path);
     function save_fig_func(config, fig_path)
         if config.save_figures
-            set(gcf,'Color','white');
-            set(gca,'Color','white');
+            set(gcf,'Color',figure_bg);
+            set(gca,'Color',axes_bg);
             exportgraphics(gcf, fig_path, ...
                 'ContentType','vector', 'BackgroundColor','white', 'Resolution',600);
         end
@@ -63,8 +93,8 @@ ylabel('Y (m)', 'FontSize', font_sz.label);
 % title('Microphone Array Geometry (Top View)', 'FontSize', font_sz.title);
 grid on;
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
-set(gcf, 'Color', 'white');
-set(gca, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
+set(gca, 'Color', axes_bg);
 save_figure(path_mic_array_2d);
 
 % 3D Room, Array, and Source Positions Visualization
@@ -111,8 +141,8 @@ ylabel('Y (m)', 'FontSize', font_sz.label);
 zlabel('Z (m)', 'FontSize', font_sz.label);
 view(45, 25);
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
-set(gcf, 'Color', 'white');
-set(gca, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
+set(gca, 'Color', axes_bg);
 save_figure(path_room_layout_3d);
 
 %% 1. Inverse STFT
@@ -212,7 +242,7 @@ fprintf('  Max eigenvalue: %.4e\n', evals(1));
 fprintf('  Top 3 eigenvalues: %.4e, %.4e, %.4e\n', evals(1), evals(2), evals(3));
 
 figure(203); clf;
-plot(1:Nmic, 10*log10(evals + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k');
+plot(1:Nmic, 10*log10(evals + eps), '-o', 'LineWidth', line_w.medium, 'MarkerSize', marker_sz.main, 'Color', text_color);
 xlabel('Index', 'FontSize', font_sz.label); ylabel('Eigenvalue (dB)', 'FontSize', font_sz.label);
 % title(sprintf('Covariance Eigenspectrum at %.0f Hz', F(k2k)));
 grid on;
@@ -260,7 +290,7 @@ fprintf('  Largest relative drop at index %d->%d (%.1f%%)\n', elbow_idx, elbow_i
 fprintf('  Signal subspace dimension (by elbow): %d\n', elbow_idx);
 
 figure(214); clf;
-plot(1:Nmic, 10*log10(evals_full + eps), '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'r');
+plot(1:Nmic, 10*log10(evals_full + eps), '-o', 'LineWidth', line_w.medium, 'MarkerSize', marker_sz.main, 'Color', 'r');
 xlabel('Index', 'FontSize', font_sz.label); ylabel('Eigenvalue (dB)', 'FontSize', font_sz.label);
 grid on;
 set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
@@ -270,16 +300,15 @@ save_figure(path_eigenspectrum_fullband);
 figure(215); clf;
 evals_norm = evals / max(evals);
 evals_full_norm = evals_full / max(evals_full);
-semilogy(1:Nmic, evals_norm, '-o', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'k', 'DisplayName', '2kHz only'); hold on;
-semilogy(1:Nmic, evals_full_norm, '-s', 'LineWidth', 2, 'MarkerSize', 8, 'Color', 'r', 'DisplayName', 'Full-band (2k+4k)');
+semilogy(1:Nmic, evals_norm, '-o', 'LineWidth', line_w.medium, 'MarkerSize', marker_sz.main, 'Color', 'k', 'DisplayName', config.eigen_plot_names{1}); hold on;
+semilogy(1:Nmic, evals_full_norm, '-s', 'LineWidth', line_w.medium, 'MarkerSize', marker_sz.main, 'Color', 'r', 'DisplayName', config.eigen_plot_names{2});
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label); ylabel('Normalized Eigenvalue', 'FontSize', font_sz.label);
 h = legend('FontSize', font_sz.legend, 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k');
 grid on;
-set(gcf,'InvertHardcopy','off'); 
 set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
-set(gcf, 'Color', 'white');
-set(gca, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
+set(gca, 'Color', axes_bg);
 path_eigenspectrum_comparison = fullfile(figures_dir, 'Eigenspectrum_comparison_2kHz_vs_fullband.pdf');
 save_figure(path_eigenspectrum_comparison);
 
@@ -292,11 +321,11 @@ yline(0.01 * evals_full(1), '--', 'LineWidth', 1.5, 'Color', 'b', 'DisplayName',
 yline(evals_full(end), '--', 'LineWidth', 1.5, 'Color', 'g', 'DisplayName', 'Noise floor');
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Eigenvalue', 'FontSize', font_sz.label);
-title('Full-band Eigenvalue Spectrum (Top 10)', 'FontSize', font_sz.title);
+% title('Full-band Eigenvalue Spectrum (Top 10)', 'FontSize', font_sz.title);
 h = legend('FontSize', font_sz.legend, 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k');
 grid on;
-set(ax1, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
+set(ax1, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'Color', axes_bg, 'XColor', text_color, 'YColor', text_color);
 
 % Relative magnitude plot
 ax2 = subplot(2,1,2);
@@ -306,13 +335,13 @@ hold on;
 yline(1, '--', 'LineWidth', 1.5, 'Color', 'b', 'DisplayName', '1% threshold');
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Relative Magnitude (%)', 'FontSize', font_sz.label);
-title('Relative Eigenvalue Magnitudes', 'FontSize', font_sz.title);
+% title('Relative Eigenvalue Magnitudes', 'FontSize', font_sz.title);
 h = legend('FontSize', font_sz.legend, 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
-set(ax2, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'YScale', 'log', 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k');
+set(ax2, 'LineWidth', 1.5, 'FontSize', font_sz.tick, 'YScale', 'log', 'Color', axes_bg, 'XColor', text_color, 'YColor', text_color);
 grid on;
 
-set(gcf, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
 path_eigenanalysis = fullfile(figures_dir, 'Eigenvalue_detailed_analysis.pdf');
 save_figure(path_eigenanalysis);
 
@@ -422,9 +451,12 @@ t_mvdr = (0:length(y_mvdr_target)-1) / config.fs;
 plot(t_mvdr, y_mvdr_target, 'b', 'LineWidth', 1.5); hold on;
 plot(t_mvdr, y_mvdr_interf, 'm', 'LineWidth', 1.5);
 xlabel('Time (s)', 'FontSize', font_sz.label); ylabel('Amplitude', 'FontSize', font_sz.label);
-h = legend('2kHz-steered', '4kHz-steered', 'Location', 'best');
-% h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k', 'FontSize', font_sz.legend);
+if isfield(config, 'legend_mvdr') && numel(config.legend_mvdr) >= 2
+    h = legend(config.legend_mvdr{1}, config.legend_mvdr{2}, 'Location', 'best');
+else
+    h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
+end
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k', 'FontSize', font_sz.legend);
 % title('MVDR Beamformer Outputs', 'FontSize', font_sz.title);
 grid on;
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
@@ -448,37 +480,43 @@ tiledlayout(2,3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 nexttile;
 plot(t_cmp, x_target_cmp, 'b', 'LineWidth', 1.1);
-t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+% t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); 
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, x_interf_cmp, 'm', 'LineWidth', 1.1);
-t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+% t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman');
+
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, x_noisy_cmp, 'k', 'LineWidth', 1.1);
-t = title('Input Received (Mic 1)'); 
-set(t, 'Color', 'k', 'FontName', 'Times New Roman'); 
+% t = title('Input Received (Mic 1)'); set(t, 'Color', 'k', 'FontName', 'Times New Roman');
+
 xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_target_cmp, 'b', 'LineWidth', 1.1);
-t = title('MVDR Processed Target'); 
-set(t, 'Color', 'k', 'FontName', 'Times New Roman'); 
+% t = title('MVDR Processed Target'); set(t, 'Color', 'k', 'FontName', 'Times New Roman');
+
 xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_interf_cmp, 'm', 'LineWidth', 1.1);
-t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+% t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); 
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 nexttile;
 plot(t_cmp, y_recv_cmp, 'k', 'LineWidth', 1.1);
-t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+% t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontName', 'Times New Roman'); 
+
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
 
 % sg = sgtitle('Input vs MVDR-Processed Signals');
 % set(sg, 'Color', 'k', 'FontWeight', 'bold', 'FontName', 'Times New Roman', 'FontSize', 20);
 set(findall(gcf,'type','axes'), 'LineWidth', 1, 'FontSize', font_sz.small_tick);
-set(gcf, 'Color', 'white');
-set(findall(gcf,'type','axes'), 'Color', 'white', 'XColor', 'k', 'YColor', 'k');
+set(gcf, 'Color', figure_bg);
+set(findall(gcf,'type','axes'), 'Color', axes_bg, 'XColor', text_color, 'YColor', text_color);
 save_figure(path_signal_comparison);
 
 % IEEE-style overview: one figure with input vs MVDR-processed spectrograms
@@ -510,36 +548,43 @@ tiledlayout(2,3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 nexttile;
 imagesc(Tspec, Fspec, P_xt); axis xy;
-t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('Input Target (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
 nexttile;
 imagesc(Tspec, Fspec, P_xi); axis xy;
-t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('Input Interference (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); 
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
 nexttile;
 imagesc(Tspec, Fspec, P_xr); axis xy;
-t = title('Input Received (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('Input Received (Mic 1)'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
 nexttile;
 imagesc(Tspec, Fspec, P_yt); axis xy;
-t = title('MVDR Processed Target'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('MVDR Processed Target'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); 
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
 nexttile;
 imagesc(Tspec, Fspec, P_yi); axis xy;
-t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('MVDR Processed Interference'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); 
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
 nexttile;
 imagesc(Tspec, Fspec, P_yr); axis xy;
-t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title); xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
+% t = title('MVDR Processed Received'); set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+
+xlabel('Time (s)', 'FontSize', font_sz.subtitle); ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]); caxis([spec_clim_min spec_clim_max]); set(gca, 'FontSize', font_sz.small_tick);
 
-colormap(turbo);
-set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', 'white', 'XColor', 'k', 'YColor', 'k', 'FontSize', font_sz.small_tick);
+colormap(cmap_name);
+set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', axes_bg, 'XColor', text_color, 'YColor', text_color, 'FontSize', font_sz.small_tick);
 cb = colorbar;
 cb.Layout.Tile = 'east';
 cb.Label.String = 'Power/Frequency (dB)';
@@ -551,7 +596,7 @@ cb.FontSize = font_sz.colorbar;
 cb.Label.FontSize = font_sz.colorbar_label;
 % sg = sgtitle('Input vs MVDR-Processed Spectrograms', 'Color', 'k', 'FontWeight', 'bold');
 % set(sg, 'Color', 'k', 'FontName', 'Times New Roman', 'FontSize', 20);
-set(gcf, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
 save_figure(path_spectrograms);
 
 %% 6a. MVDR Interference Suppression Comparison (3-tile highlight)
@@ -562,42 +607,45 @@ tiledlayout(1,3, 'TileSpacing', 'compact', 'Padding', 'compact');
 
 nexttile;
 imagesc(Tspec, Fspec, P_xr); axis xy;
-t = title('Input Received (Mixed)', 'FontWeight', 'bold');
-set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+% t = title('Input Received (Mixed)', 'FontWeight', 'bold');
+% set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
 xlabel('Time (s)', 'FontSize', font_sz.subtitle);
 ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, '2kHz+4kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
-    'VerticalAlignment', 'top', 'BackgroundColor', [0 0 0 0.5]);
+text(0.02, 0.95, figure213_annotations.mixed.text, 'Units', 'normalized', 'FontSize', figure213_annotations.mixed.font_size, ...
+    'Color', figure213_annotations.mixed.color, 'FontWeight', figure213_annotations.mixed.font_weight, ...
+    'VerticalAlignment', 'top', 'BackgroundColor', figure213_annotations.mixed.background_color);
 
 nexttile;
 imagesc(Tspec, Fspec, P_yt); axis xy;
-t = title('Target-Steered MVDR (2kHz)', 'FontWeight', 'bold');
-set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+% t = title('Target-Steered MVDR', 'FontWeight', 'bold');
+% set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
 xlabel('Time (s)', 'FontSize', font_sz.subtitle);
 ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, 'Suppress 4kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
-    'VerticalAlignment', 'top', 'BackgroundColor', [0 0.5 0 0.5]);
+text(0.02, 0.95, figure213_annotations.target.text, 'Units', 'normalized', 'FontSize', figure213_annotations.target.font_size, ...
+    'Color', figure213_annotations.target.color, 'FontWeight', figure213_annotations.target.font_weight, ...
+    'VerticalAlignment', 'top', 'BackgroundColor', figure213_annotations.target.background_color);
 
 nexttile;
 imagesc(Tspec, Fspec, P_yi); axis xy;
-t = title('Interference-Steered MVDR (4kHz)', 'FontWeight', 'bold');
-set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
+% t = title('Interference-Steered MVDR', 'FontWeight', 'bold');
+% set(t, 'Color', 'k', 'FontSize', font_sz.subtile_title);
 xlabel('Time (s)', 'FontSize', font_sz.subtitle);
 ylabel('Frequency (Hz)', 'FontSize', font_sz.subtitle);
 ylim([0 config.fs/2]);
 caxis([spec_clim_min spec_clim_max]);
 set(gca, 'FontSize', font_sz.small_tick);
-text(0.02, 0.95, 'Suppress 2kHz', 'Units', 'normalized', 'FontSize', 15, 'Color', 'w', 'FontWeight', 'bold', ...
-    'VerticalAlignment', 'top', 'BackgroundColor', [0.5 0 0 0.5]);
+text(0.02, 0.95, figure213_annotations.interference.text, 'Units', 'normalized', 'FontSize', figure213_annotations.interference.font_size, ...
+    'Color', figure213_annotations.interference.color, 'FontWeight', figure213_annotations.interference.font_weight, ...
+    'VerticalAlignment', 'top', 'BackgroundColor', figure213_annotations.interference.background_color);
 
-colormap(turbo);
-set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', 'white', 'XColor', 'k', 'YColor', 'k', 'FontSize', font_sz.small_tick);
+colormap(cmap_name);
+set(findall(gcf,'type','axes'), 'LineWidth', 1, 'Color', axes_bg, 'XColor', text_color, 'YColor', text_color, 'FontSize', font_sz.small_tick);
 cb = colorbar;
 cb.Layout.Tile = 'east';
 cb.Label.String = 'Power/Frequency (dB)';
@@ -607,7 +655,7 @@ cb.Label.Color = 'k';
 cb.Label.FontWeight = 'bold';
 cb.FontSize = font_sz.colorbar;
 cb.Label.FontSize = font_sz.colorbar_label;
-set(gcf, 'Color', 'white');
+set(gcf, 'Color', figure_bg);
 
 path_mvdr_suppression = fullfile(figures_dir, 'MVDR_interference_suppression_comparison.pdf');
 save_figure(path_mvdr_suppression);
@@ -620,7 +668,7 @@ bar([SNR_in_dB, SNR_out_dB; ISR_in_dB, ISR_out_dB]);
 set(gca, 'XTickLabel', {'2kHz-steered', '4kHz-steered'}, 'FontSize', font_sz.tick);
 ylabel('Ratio (dB)', 'FontSize', font_sz.label);
 h = legend('Before MVDR', 'After MVDR', 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k', 'FontSize', font_sz.legend);
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k', 'FontSize', font_sz.legend);
 grid on;
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
 save_figure(path_performance_improvement);
@@ -683,8 +731,12 @@ plot(Fp, 10*log10(Pxx_out_target + eps), 'b', 'LineWidth', 1.5);
 plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
 xlim([0 config.fs/2]);
 xlabel('Frequency (Hz)', 'FontSize', font_sz.label); ylabel('PSD (dB/Hz)', 'FontSize', font_sz.label);
-h = legend('Input', '2kHz-steered', '4kHz-steered', 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k', 'FontSize', font_sz.legend);
+% h = legend('Input', '2kHz-steered', '4kHz-steered', 'Location', 'best');
+h = legend('Target-steered', 'Interference-steered', 'Location', 'best');
+if isfield(config, 'legend_psd') && numel(config.legend_psd) >= 2
+    h = legend(config.legend_psd{1}, config.legend_psd{2}, 'Location', 'best');
+end
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k', 'FontSize', font_sz.legend);
 grid on;
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
 save_figure(path_psd_fullband);
@@ -695,7 +747,7 @@ plot(Fp, 10*log10(Pxx_out_interf + eps), 'm', 'LineWidth', 1.5);
 xlim([3500 4500]);
 xlabel('Frequency (Hz)', 'FontSize', font_sz.label); ylabel('PSD (dB/Hz)', 'FontSize', font_sz.label);
 h = legend('Input', '4kHz-steered', 'Location', 'best');
-set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k', 'FontSize', font_sz.legend);
+set(h, 'TextColor', 'k', 'Box', 'on', 'Color', figure_bg, 'EdgeColor', 'k', 'FontSize', font_sz.legend);
 grid on;
 set(gca, 'LineWidth', 1, 'FontSize', font_sz.tick);
 save_figure(path_psd_4kHz);

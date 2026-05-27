@@ -38,7 +38,9 @@ cond_numbers = zeros(n_betas, 1);
 
 %% Load baseline configuration
 fprintf('[Analysis] Loading base configuration...\n');
-load_config;
+config = load_config('real_signal_dcbias_4k');
+% config = load_config('demo_2k_4k');
+
 
 %% Create output directory structure
 base_output_dir = config.output_dir;
@@ -181,7 +183,7 @@ end
 
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Eigenvalue Magnitude', 'FontSize', font_sz.label);
-title('Covariance Eigenspectra at 2 kHz vs. Reflection Coefficient', 'FontSize', font_sz.title);
+% title('Covariance Eigenspectra at 2 kHz vs. Reflection Coefficient', 'FontSize', font_sz.title);
 h = legend('FontSize', font_sz.legend, 'Location', 'best');
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on; set(gca, 'FontSize', font_sz.tick, 'LineWidth', 1.5);
@@ -214,7 +216,7 @@ end
 
 xlabel('Eigenvalue Index', 'FontSize', font_sz.label);
 ylabel('Eigenvalue Magnitude', 'FontSize', font_sz.label);
-title('Full-Band Covariance Eigenspectra (2 kHz + 4 kHz) vs. Reflection Coefficient', 'FontSize', font_sz.title);
+% title('Full-Band Covariance Eigenspectra (2 kHz + 4 kHz) vs. Reflection Coefficient', 'FontSize', font_sz.title);
 h = legend('FontSize', font_sz.legend, 'Location', 'best');
 set(h, 'TextColor', 'k', 'Box', 'on', 'Color', 'white', 'EdgeColor', 'k');
 grid on; set(gca, 'FontSize', font_sz.tick, 'LineWidth', 1.5);
@@ -233,7 +235,7 @@ plot(beta_values, SNR_gains, '-o', 'LineWidth', 2.2, 'MarkerSize', 10, 'Color', 
 hold on; grid on;
 xlabel('Wall Reflection Coefficient (β)', 'FontSize', font_sz.label);
 ylabel('SNR Gain (dB)', 'FontSize', font_sz.label);
-title('Target-Steered: SNR Gain', 'FontSize', font_sz.title);
+% title('Target-Steered: SNR Gain', 'FontSize', font_sz.title);
 set(gca, 'FontSize', font_sz.tick, 'LineWidth', 1.5);
 
 % ISR Gain
@@ -242,7 +244,7 @@ plot(beta_values, ISR_gains, '-s', 'LineWidth', 2.2, 'MarkerSize', 10, 'Color', 
 hold on; grid on;
 xlabel('Wall Reflection Coefficient (β)', 'FontSize', font_sz.label);
 ylabel('ISR Gain (dB)', 'FontSize', font_sz.label);
-title('Interference-Steered: ISR Gain', 'FontSize', font_sz.title);
+% title('Interference-Steered: ISR Gain', 'FontSize', font_sz.title);
 set(gca, 'FontSize', font_sz.tick, 'LineWidth', 1.5);
 
 % Condition Number
@@ -251,7 +253,7 @@ semilogy(beta_values, cond_numbers, '-^', 'LineWidth', 2.2, 'MarkerSize', 10, 'C
 hold on; grid on;
 xlabel('Wall Reflection Coefficient (β)', 'FontSize', font_sz.label);
 ylabel('Condition Number κ', 'FontSize', font_sz.label);
-title('Covariance Matrix Conditioning', 'FontSize', font_sz.title);
+% title('Covariance Matrix Conditioning', 'FontSize', font_sz.title);
 set(gca, 'FontSize', font_sz.tick, 'LineWidth', 1.5);
 
 set(gcf, 'Color', 'white'); set(findall(gcf,'type','axes'), 'Color', 'white');
