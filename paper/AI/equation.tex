@@ -1,0 +1,49 @@
+% 文档类：IEEEtran是IEEE官方模板，conference为会议版，journal为期刊版
+\documentclass[conference]{IEEEtran}
+% 若需双栏转单栏（如长公式/大图），可加选项：\documentclass[conference,oneside]{IEEEtran}
+
+% 编码与字体：确保中文/特殊符号正常显示（如需中文可加ctex包）
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern} % 优化字体显示
+
+% 数学公式核心包（适配复杂公式+AI导入的公式符号）
+\usepackage{amsmath,amssymb,amsfonts} % 标准数学公式包
+\usepackage{mathtools} % 扩展数学工具（如多行公式、定界符）
+\usepackage{upgreek} % 希腊字母斜体（IEEE规范）
+\usepackage{mathrsfs} % 花体字母（如ℳ、𝒫）
+
+% 图表排版（适配AI导出的EPS/PDF矢量图）
+\usepackage{graphicx} % 插入图片
+\usepackage{float} % 固定图表位置[H]
+\usepackage{subfig} % 子图排版（subfloat）
+\graphicspath{{figures/}} % 图表文件夹（建议将AI导出的图放此目录）
+\DeclareGraphicsExtensions{.pdf,.eps,.png} % 优先加载矢量格式
+
+% 页面与排版规范
+\usepackage{geometry} % 页边距（IEEEtran已预设，无需额外调整）
+\usepackage{caption} % 图表标题格式
+\captionsetup{font=small, labelfont=bf} % 标题字体（IEEE小字号，标签加粗）
+\usepackage{booktabs} % 三线表（IEEE表格规范）
+\usepackage{multirow,multicol} % 复杂表格
+
+% 参考文献（IEEE规范）
+\usepackage{cite} % 引用排序（[1], [2]-[4]格式）
+\bibliographystyle{IEEEtran} % IEEE参考文献样式
+
+% 其他实用设置
+\usepackage{hyperref} % 超链接（文末加载避免冲突）
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black} % 链接无颜色（符合印刷规范）
+\usepackage{enumitem} % 列表格式优化
+\usepackage{url} % URL排版
+\usepackage{siunitx} % 单位符号（如\SI{5}{\milli\meter}）
+
+% 正文开始
+\begin{document}
+	
+$r_{min}$
+
+$r_{max}$
+
+	
+\end{document}
