@@ -1,0 +1,17 @@
+data/
+datasets/
+.git
+/.venv/
+.venv/
+.idea/
+enhancement_report/
+experiments/
+main.ipynb
+*.pt
+*.pth
+__pycache__/
+*.log
+*.npy
+*.npz
+*.wav
+

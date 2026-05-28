@@ -1,0 +1,33 @@
+model:
+  in_channels: 2
+  embed_dim: 128
+  depth: 4
+  num_heads: 8
+  patch_size: [16, 16]
+  input_size: [128, 64]
+  suppression_mode: frequency_aware
+
+data:
+  data_dir: data/
+  train_samples: 800
+  val_samples: 200
+  test_samples: 100
+  sample_rate: 16000
+  n_fft: 512
+  hop_length: 256
+  n_mels: 128
+  split_ratio: [0.7, 0.15, 0.15]
+
+train:
+  batch_size: 4
+  num_epochs: 1
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  lambda_mask: 0.5
+  num_workers: 0
+  checkpoint_interval: 10
+  seed: 42
+
+runtime:
+  device: auto
+  output_dir: experiments/default

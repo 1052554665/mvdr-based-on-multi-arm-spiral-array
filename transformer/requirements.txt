@@ -1,0 +1,11 @@
+numpy
+matplotlib
+scikit-learn
+tensorboard
+tqdm
+einops
+opencv-python
+pyyaml
+librosa
+soundfile
+scipy

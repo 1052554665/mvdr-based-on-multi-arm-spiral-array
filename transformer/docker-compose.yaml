@@ -1,0 +1,19 @@
+services:
+  dl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: dual_transformer
+
+    volumes:
+      - ./data:/app/data
+      - ./experiments:/app/experiments
+      - ./enhancement_report:/app/enhancement_report
+
+    ports:
+      - "6006:6006"
+    command: ["python", "scripts/train.py", "--config", "configs/default.yaml"]
+
+    stdin_open: true
+    tty: true
