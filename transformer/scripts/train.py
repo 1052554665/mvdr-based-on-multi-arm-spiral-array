@@ -4,12 +4,15 @@ import argparse
 import sys
 from pathlib import Path
 
+from torch.utils.data import DataLoader
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.trainers.workflow import train_model
 from src.utils.config import load_config
+from src.utils.train_eval import save_enhanced_audio, generate_enhancement_report
 
 
 def parse_args():
@@ -58,7 +61,36 @@ def main():
     if output_dir is not None:
         output_dir = str((project_root / output_dir).resolve()) if not Path(output_dir).is_absolute() else output_dir
 
-    train_model(config, data_dir=data_dir, output_dir=output_dir)
+    model, test_dataset, _, device = train_model(config, data_dir=data_dir, output_dir=output_dir)
+
+    if test_dataset is not None and len(test_dataset) > 0:
+        train_cfg = config.get("train", {})
+        batch_size = int(train_cfg.get("batch_size", 4))
+        num_workers = int(train_cfg.get("num_workers", 0))
+        pin_memory = device.type == "cuda"
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+        output_root = Path(output_dir or config.get("runtime", {}).get("output_dir", "experiments/default")).resolve()
+        saved_count = save_enhanced_audio(
+            model,
+            test_loader,
+            device,
+            output_dir=str(output_root / "enhanced_outputs"),
+            num_samples=len(test_dataset),
+        )
+        print(f"Saved {saved_count} enhanced spectrogram samples to {output_root / 'enhanced_outputs'}")
+        try:
+            report_path = generate_enhancement_report(model, test_loader, device, output_dir=str(output_root / "enhancement_report"), num_samples=min(10, len(test_dataset)))
+            print(f"Evaluation report saved to {report_path}")
+        except Exception as exc:
+            print(f"[WARNING] Failed to generate enhancement report: {exc}")
+    else:
+        print("[WARNING] Test dataset is empty, skipping enhanced output export.")
 
 
 if __name__ == "__main__":

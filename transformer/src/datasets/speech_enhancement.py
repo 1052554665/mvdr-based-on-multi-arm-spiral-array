@@ -36,25 +36,36 @@ class SpeechEnhancementDataset(Dataset):
         self.clean_files: list[str] = []
         self.noise_files: list[str] = []
         self.noisy_files: list[str] = []
+        self.data_mode = "synthetic"
         self.use_real_data = False
 
         if data_dir:
             data_root = Path(data_dir)
             if data_root.exists():
-                clean_files = self._scan_audio_files(data_root / "clean")
-                noise_files = self._scan_audio_files(data_root / "noise")
-                noisy_files = self._scan_audio_files(data_root / "noisy") if (data_root / "noisy").exists() else []
+                clean_audio_files = self._scan_audio_files(data_root / "clean")
+                noise_audio_files = self._scan_audio_files(data_root / "noise")
+                noisy_audio_files = self._scan_audio_files(data_root / "noisy") if (data_root / "noisy").exists() else []
 
-                if clean_files and noise_files:
-                    self.clean_files = self._split_single_list(clean_files, split_ratio, seed)
-                    self.noise_files = self._split_single_list(noise_files, split_ratio, seed)
-                    self.noisy_files = noisy_files[: len(self.clean_files)] if noisy_files else []
+                clean_png_files = self._scan_image_files(data_root / "clean")
+                noise_png_files = self._scan_image_files(data_root / "noise")
+                noisy_png_files = self._scan_image_files(data_root / "noisy") if (data_root / "noisy").exists() else []
+
+                if clean_png_files and noise_png_files and not clean_audio_files and not noise_audio_files:
+                    self.data_mode = "png"
+                    self.clean_files = self._split_single_list(clean_png_files, split_ratio, seed)
+                    self.noise_files = self._split_single_list(noise_png_files, split_ratio, seed)
+                    self.noisy_files = noisy_png_files[: len(self.clean_files)] if noisy_png_files else []
                     self.use_real_data = len(self.clean_files) > 0 and len(self.noise_files) > 0
-
-                    if not self.use_real_data:
-                        print(f"[WARNING] Split '{split}' is empty. Falling back to synthetic samples.")
+                elif clean_audio_files and noise_audio_files and not clean_png_files and not noise_png_files:
+                    self.data_mode = "audio"
+                    self.clean_files = self._split_single_list(clean_audio_files, split_ratio, seed)
+                    self.noise_files = self._split_single_list(noise_audio_files, split_ratio, seed)
+                    self.noisy_files = noisy_audio_files[: len(self.clean_files)] if noisy_audio_files else []
+                    self.use_real_data = len(self.clean_files) > 0 and len(self.noise_files) > 0
+                elif any((clean_audio_files, noise_audio_files, clean_png_files, noise_png_files)):
+                    print(f"[WARNING] Mixed or incomplete data types under {data_root}. Falling back to synthetic samples.")
                 else:
-                    print(f"[WARNING] Missing audio files under {data_root}. Falling back to synthetic samples.")
+                    print(f"[WARNING] Missing supported files under {data_root}. Falling back to synthetic samples.")
             else:
                 print(f"[WARNING] Data directory does not exist: {data_dir}. Falling back to synthetic samples.")
 
@@ -87,6 +98,12 @@ class SpeechEnhancementDataset(Dataset):
             return []
         audio_extensions = {".wav", ".flac", ".mp3", ".ogg"}
         return [str(directory / name) for name in sorted(os.listdir(directory)) if Path(name).suffix.lower() in audio_extensions]
+
+    def _scan_image_files(self, directory: Path) -> list[str]:
+        if not directory.exists():
+            return []
+        image_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+        return [str(directory / name) for name in sorted(os.listdir(directory)) if Path(name).suffix.lower() in image_extensions]
 
     def _load_audio(self, filepath: str, target_sr: Optional[int] = None) -> torch.Tensor:
         try:
@@ -134,6 +151,33 @@ class SpeechEnhancementDataset(Dataset):
         spectrogram = np.stack([mel_spec_db, delta], axis=0)
         return torch.as_tensor(spectrogram, dtype=torch.float32)
 
+    def _load_spectrogram_image(self, filepath: str) -> torch.Tensor:
+        try:
+            import cv2
+        except ImportError as exc:
+            raise ImportError("Please install opencv-python: pip install opencv-python") from exc
+
+        image = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
+        if image is None:
+            raise ValueError(f"Failed to read image file: {filepath}")
+
+        if image.ndim == 3:
+            if image.shape[2] == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_BGRA2GRAY)
+            else:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        image = image.astype(np.float32)
+        image_min = float(image.min())
+        image_max = float(image.max())
+        denom = max(image_max - image_min, 1e-8)
+        image = (image - image_min) / denom * 2 - 1
+
+        target_f, target_t = self.input_size
+        image = cv2.resize(image, (target_t, target_f), interpolation=cv2.INTER_LINEAR)
+        spectrogram = np.stack([image, image], axis=0)
+        return torch.as_tensor(spectrogram, dtype=torch.float32)
+
     def _generate_noisy(self, clean_audio: torch.Tensor, noise_audio: torch.Tensor, snr_db: float = 10.0) -> torch.Tensor:
         min_len = min(len(clean_audio), len(noise_audio))
         clean_audio = clean_audio[:min_len]
@@ -153,6 +197,26 @@ class SpeechEnhancementDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor | int | str]:
         if self.use_real_data and self.clean_files and self.noise_files:
             try:
+                if self.data_mode == "png":
+                    clean_path = self.clean_files[idx % len(self.clean_files)]
+                    noise_path = self.noise_files[idx % len(self.noise_files)]
+                    clean_spec = self._load_spectrogram_image(clean_path)
+                    noise_spec = self._load_spectrogram_image(noise_path)
+
+                    if self.noisy_files:
+                        noisy_path = self.noisy_files[idx % len(self.noisy_files)]
+                        noisy_spec = self._load_spectrogram_image(noisy_path)
+                    else:
+                        noisy_spec = torch.clamp(clean_spec + 0.5 * noise_spec, min=-1.0, max=1.0)
+
+                    return {
+                        "noisy": noisy_spec,
+                        "noise": noise_spec,
+                        "clean": clean_spec,
+                        "idx": idx,
+                        "split": self.split,
+                    }
+
                 if self.noisy_files:
                     noisy_path = self.noisy_files[idx % len(self.noisy_files)]
                     clean_path = self.clean_files[idx % len(self.clean_files)]
@@ -184,7 +248,7 @@ class SpeechEnhancementDataset(Dataset):
         return {"noisy": x_noisy, "noise": noise, "clean": x_clean, "idx": idx, "split": self.split}
 
 
-def prepare_dataset_structure(base_dir: str = "data/speech_enhancement") -> None:
+def prepare_dataset_structure(base_dir: str = "data/") -> None:
     base_path = Path(base_dir)
     for sub_dir in ("clean", "noise", "noisy"):
         (base_path / sub_dir).mkdir(parents=True, exist_ok=True)
@@ -192,7 +256,7 @@ def prepare_dataset_structure(base_dir: str = "data/speech_enhancement") -> None
 
 
 def generate_and_save_noisy_audio(
-    data_dir: str = "data/speech_enhancement",
+    data_dir: str = "data/",
     output_dir: str | None = None,
     num_samples: int = 100,
     snr_range: tuple[float, float] = (0, 20),

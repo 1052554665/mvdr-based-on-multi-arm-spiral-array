@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.models.dual_branch_transformer import DualBranchTransformer
 from src.trainers.workflow import build_dataloaders
 from src.utils.config import load_config
-from src.utils.train_eval import generate_enhancement_report
+from src.utils.train_eval import generate_enhancement_report, save_enhanced_audio
 
 
 def parse_args():
@@ -69,7 +69,9 @@ def main():
 
     active_loader = test_loader if len(test_loader.dataset) > 0 else val_loader
     report_path = generate_enhancement_report(model, active_loader, device, output_dir=str(output_dir), num_samples=args.num_samples)
+    saved_count = save_enhanced_audio(model, active_loader, device, output_dir=str(output_dir / "enhanced_outputs"), num_samples=args.num_samples)
     print(f"Report saved to {report_path}")
+    print(f"Saved {saved_count} enhanced spectrogram samples to {output_dir / 'enhanced_outputs'}")
 
 
 if __name__ == "__main__":

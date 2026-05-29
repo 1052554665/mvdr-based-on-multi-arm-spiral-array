@@ -3,6 +3,7 @@ data/
 *.csv
 *.npy
 *.mat
+*.npz
 
 # 模型权重
 checkpoints/

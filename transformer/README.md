@@ -100,16 +100,26 @@ NOTE：
 - 提供Docker容器化支持
 
 
-## 执行训练
-1. 本机直接训练（推荐先用这个确认流程）
-先进入项目根目录，然后执行：
-    ```bash
-    python train.py --config ../configs/train.yaml
-    ```
-如果你当前环境不是这个 .venv，就用你自己的 Python 命令替换前半段。
-训练入口在 train.py，配置文件用你当前打开的 train.yaml。
+# 执行训练
+## 本机直接训练（推荐先用这个确认流程）
 
-2. Docker 里训练（已配置挂载）
+先进入项目根目录
+```bash
+cd transformer
+```
+然后执行：
+```bash
+python scripts/train.py --config configs/train.yaml
+```
+使用评估入口基于已有 checkpoint 生成报告（不会重新训练）：
+  ```bash
+  cd transformer
+  python scripts/evaluate.py --config configs/train.yaml --checkpoint experiments/train/best_model.pth --output-dir enhancement_report --num-samples 20
+  ```
+
+
+
+## Docker 里训练（已配置挂载）
 在项目根目录执行：
 ```bash
 docker compose up --build
@@ -117,13 +127,13 @@ docker compose up --build
 默认会执行训练命令，配置来自 docker-compose.yaml。
 容器内训练脚本由 Dockerfile 和 docker-compose.yaml 指定。
 
-3. 常见检查点
+1. 常见检查点
 - 配置文件路径是否存在：train.yaml
 - 训练脚本是否存在：train.py
 - 数据目录是否有内容：data/speech_enhancement/clean 和 data/speech_enhancement/noise
 
 
-## 模型结构（Dual-Branch Transformer）
+# 模型结构（Dual-Branch Transformer）
 
 - PatchEmbedding：把 2D 时频图切 patch 并映射到 token。 
 - TransformerEncoder：共享编码器分别处理语音分支和噪声分支。
@@ -131,7 +141,7 @@ docker compose up --build
 - Decoder：把 token 解码为时频掩码并上采样回原尺寸。
 - DualBranchTransformer：输出 enhanced = mask * noisy_magnitude 与 mask。
 
-### CrossAttentionFusion——3种抑制模式
+## CrossAttentionFusion——3种抑制模式
 新增3种抑制模式（默认使用frequency_aware）：
 
 |模式|机制|适用场景
@@ -248,3 +258,4 @@ data/speech_enhancement/
 - Noisy谱图：看到明显的水平条纹（周期性噪声）或随机斑点（宽带噪声）
 - Enhanced谱图：噪声纹理消失，语音共振峰（横向条纹）更清晰
 - Mask：噪声区域显示深紫色（被抑制），语音区域显示黄色（保留）
+
