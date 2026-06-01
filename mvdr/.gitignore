@@ -2,6 +2,7 @@
 datasets/
 *.npy
 *.mat
+raw_datasets/
 
 # 模型权重
 checkpoints/

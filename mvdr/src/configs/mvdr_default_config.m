@@ -33,8 +33,8 @@ config.mvdr_progress_step = 20;    % Print progress every N bins
 
 %% Covariance estimation parameters
 config.Mavg = 31;                  % Averaging window for covariance (frames)
-config.epsilon = 1e-4;             % Base diagonal loading (relative scale)
-config.shrink_alpha = 0.01;        % Shrinkage factor (0..0.3)
+config.epsilon = 1e-3;             % Base diagonal loading (relative scale)
+config.shrink_alpha = 0;        % Shrinkage factor (0..0.3)
 config.M_signal = 2;               % Signal subspace dimension (0=full rank)
 
 %% Oracle covariance modes (for debug/upper bound evaluation)

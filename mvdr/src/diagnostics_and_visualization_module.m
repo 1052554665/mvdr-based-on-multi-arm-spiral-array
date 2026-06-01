@@ -28,7 +28,8 @@ figure213_annotations = config.figure213_annotations;
 figures_dir = fullfile(config.output_dir, config.figure_subdir);
 path_eigenspectrum_2kHz = fullfile(figures_dir, 'Rxx_eigenspectrum_2kHz.pdf');
 path_eigenspectrum_fullband = fullfile(figures_dir, 'Rxx_eigenspectrum_fullband.pdf');
-path_beampattern_2kHz = fullfile(figures_dir, 'Beampattern_2kHz.pdf');
+path_beampattern = fullfile(figures_dir, 'Beampattern.pdf');
+path_beampattern_polar = fullfile(figures_dir, 'Beampattern_polar.pdf');
 path_target_signal = fullfile(figures_dir, 'Target_signal.pdf');
 path_received_signal = fullfile(figures_dir, 'Received_signal.pdf');
 path_mvdr_outputs = fullfile(figures_dir, 'MVDR_outputs.pdf');
@@ -345,7 +346,7 @@ set(gcf, 'Color', figure_bg);
 path_eigenanalysis = fullfile(figures_dir, 'Eigenvalue_detailed_analysis.pdf');
 save_figure(path_eigenanalysis);
 
-% Beampattern at 2 kHz
+% Beampattern
 center_frame = round(numFrames/2);
 t1c = max(1, center_frame - floor(config.Mavg/2));
 t2c = min(numFrames, center_frame + floor(config.Mavg/2));
@@ -376,13 +377,64 @@ for ii = 1:length(azs)
     resp_2k(ii) = 20*log10(abs(Wdiag' * a_try) + eps);
 end
 
+% -3 dB beamwidth around the main lobe
+[resp_peak, idx_peak] = max(resp_2k);
+bw_level = resp_peak - 3;
+N_az = numel(azs);
+azs_ext = [azs - 360, azs, azs + 360];
+resp_ext = [resp_2k, resp_2k, resp_2k];
+idx_peak_ext = idx_peak + N_az;
+
+left_idx = idx_peak_ext;
+while left_idx > 1 && resp_ext(left_idx) >= bw_level && (idx_peak_ext - left_idx) <= N_az
+    left_idx = left_idx - 1;
+end
+
+right_idx = idx_peak_ext;
+while right_idx < numel(resp_ext) && resp_ext(right_idx) >= bw_level && (right_idx - idx_peak_ext) <= N_az
+    right_idx = right_idx + 1;
+end
+
+left_edge_az = azs_ext(min(left_idx + 1, numel(azs_ext)));
+right_edge_az = azs_ext(max(right_idx - 1, 1));
+beamwidth_3db = right_edge_az - left_edge_az;
+
+left_edge_az_plot = mod(left_edge_az + 180, 360) - 180;
+right_edge_az_plot = mod(right_edge_az + 180, 360) - 180;
+peak_az_plot = mod(azs(idx_peak) + 180, 360) - 180;
+
 figure(204); clf;
-plot(azs, resp_2k, 'LineWidth', 2, 'Color', 'k');
+plot(azs, resp_2k, 'LineWidth', line_w.medium, 'Color', 'k'); hold on;
+yline(bw_level, '--', 'LineWidth', line_w.main, 'Color', [0.85 0.2 0.2]);
+y_lim = ylim;
+plot([left_edge_az_plot left_edge_az_plot], y_lim, '--', 'LineWidth', line_w.main, 'Color', [0.85 0.2 0.2]);
+plot([right_edge_az_plot right_edge_az_plot], y_lim, '--', 'LineWidth', line_w.main, 'Color', [0.85 0.2 0.2]);
+plot(peak_az_plot, resp_peak, 'o', 'MarkerSize', marker_sz.main, 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k');
+text(peak_az_plot, resp_peak - 2, sprintf('BW_{-3dB}=%.1f^o', beamwidth_3db), ...
+    'FontSize', font_sz.small_tick, 'FontWeight', 'bold', 'Color', text_color, ...
+    'HorizontalAlignment', 'center', 'VerticalAlignment', 'top');
 xlabel('Azimuth (deg)', 'FontSize', font_sz.label); ylabel('Response (dB)', 'FontSize', font_sz.label);
 % title(sprintf('Target-Steered Beampattern at %.0f Hz', F(k2k)));
 grid on;
 set(gca, 'LineWidth', 1.5, 'FontSize', font_sz.tick);
-save_figure(path_beampattern_2kHz);
+save_figure(path_beampattern);
+
+% Polar-coordinate beampattern
+figure(217); clf;
+resp_2k_norm = resp_2k - resp_peak;
+resp_2k_norm = max(resp_2k_norm, -60);
+polarplot(deg2rad(azs), resp_2k_norm, 'k', 'LineWidth', line_w.medium); hold on;
+polarplot(deg2rad([left_edge_az_plot left_edge_az_plot]), [-60 0], '--', 'LineWidth', line_w.main, 'Color', [0.85 0.2 0.2]);
+polarplot(deg2rad([right_edge_az_plot right_edge_az_plot]), [-60 0], '--', 'LineWidth', line_w.main, 'Color', [0.85 0.2 0.2]);
+polarplot(deg2rad(peak_az_plot), 0, 'o', 'MarkerSize', marker_sz.main, 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k');
+axp = gca;
+axp.ThetaZeroLocation = 'top';
+axp.ThetaDir = 'clockwise';
+axp.RLim = [-60 0];
+axp.RTick = -60:10:0;
+axp.FontSize = font_sz.small_tick;
+% title(sprintf('2 kHz Beampattern (Polar), BW_{-3dB}=%.1f^o', beamwidth_3db), 'FontSize', font_sz.subtitle, 'Color', text_color);
+save_figure(path_beampattern_polar);
 
 %% 5. Beampattern and diagnostics at 4 kHz (interference)
 fprintf('[Diagnostics] Computing 4 kHz diagnostics (interference frequency)...\n');
