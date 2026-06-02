@@ -35,6 +35,8 @@ path_received_signal = fullfile(figures_dir, 'Received_signal.pdf');
 path_mvdr_outputs = fullfile(figures_dir, 'MVDR_outputs.pdf');
 path_signal_comparison = fullfile(figures_dir, 'Signal_comparison_input_vs_mvdr.pdf');
 path_spectrograms = fullfile(figures_dir, 'Signal_comparison_spectrograms_input_vs_mvdr.pdf');
+path_spectrogram_target_noaxis = fullfile(figures_dir, 'Signal_comparison_target_spectrogram_noaxis.pdf');
+path_spectrogram_interf_noaxis = fullfile(figures_dir, 'Signal_comparison_interference_spectrogram_noaxis.pdf');
 path_performance_improvement = fullfile(figures_dir, 'Performance_improvement.pdf');
 path_psd_fullband = fullfile(figures_dir, 'PSD_fullband.pdf');
 path_psd_4kHz = fullfile(figures_dir, 'PSD_4kHz.pdf');
@@ -650,6 +652,21 @@ cb.Label.FontSize = font_sz.colorbar_label;
 % set(sg, 'Color', 'k', 'FontName', 'Times New Roman', 'FontSize', 20);
 set(gcf, 'Color', figure_bg);
 save_figure(path_spectrograms);
+
+% Additional axis-free spectrograms for the target-steered and interference-steered outputs.
+figure(218); clf;
+imagesc(Tspec, Fspec, P_yt); axis xy; axis off;
+colormap(cmap_name);
+set(gca, 'Visible', 'off');
+set(gcf, 'Color', figure_bg);
+save_figure(path_spectrogram_target_noaxis);
+
+figure(219); clf;
+imagesc(Tspec, Fspec, P_yi); axis xy; axis off;
+colormap(cmap_name);
+set(gca, 'Visible', 'off');
+set(gcf, 'Color', figure_bg);
+save_figure(path_spectrogram_interf_noaxis);
 
 %% 6a. MVDR Interference Suppression Comparison (3-tile highlight)
 fprintf('[Diagnostics] Generating MVDR interference suppression comparison...\n');

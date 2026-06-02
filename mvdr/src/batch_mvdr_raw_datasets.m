@@ -4,7 +4,9 @@ function batch_mvdr_raw_datasets(raw_root, experiment_name, output_root)
 %% ============================================================
 % Scans a dataset tree where Normal is the interference class and all
 % other subfolders are target classes. Each target file is randomly mixed
-% with one Normal file, then the existing MVDR pipeline is executed.
+% with one Normal file, then the MVDR pipeline exports two enhanced
+% spectra: target-steered (suppressing interference) and interference-
+% steered (suppressing target).
 
 script_dir = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
@@ -22,16 +24,15 @@ if nargin < 1 || isempty(raw_root)
     raw_root = fullfile(project_root, 'raw_datasets');
 end
 if nargin < 2 || isempty(experiment_name)
-    experiment_name = 'real_signal_dcbias_4k';
+    experiment_name = 'raw_datasets_transformer';
 end
 if nargin < 3 || isempty(output_root)
-    output_root = fullfile(project_root, 'output', 'raw_datasets_mvdr');
+    output_root = fullfile(project_root, 'output', 'raw_datasets_transformer');
 end
 
 base_config = load_config(experiment_name);
-base_config.save_figures = true;
-base_config.figure_subdir = 'figures';
 base_config.output_dir = output_root;
+base_config.use_parallel_rir = false;
 
 if ~isfolder(output_root)
     mkdir(output_root);
@@ -97,18 +98,27 @@ for s = 1:numel(split_dirs)
             config.target_audio = target_file;
             config.interf_audio = interf_file;
             config.output_dir = sample_out_dir;
-            config.figure_subdir = 'figures';
 
             fprintf('[Batch]   (%d/%d) target=%s | interf=%s\n', i, numel(target_files), target_base, interf_base);
 
             try
-                [mic_pos, X_target, X_interf, X_noisy, x_target, x_interf, t, Nt, Nmic, r_center] = load_data_module(config);
+                [mic_pos, ~, ~, ~, x_target, x_interf, ~, Nt, Nmic, r_center] = load_data_module(config);
                 [~, X_target, X_interf, X_noisy] = rir_generation_module(config, x_target, x_interf, mic_pos, Nt, Nmic);
-                [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ...
-                    mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
-                diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
-                    Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
-                    X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
+                spectrum_only_mode = isfield(config, 'save_spectrums_only') && config.save_spectrums_only;
+                if spectrum_only_mode
+                    [Yf_tgt, ~, ~, Yf_int, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~] = ...
+                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+                    save_spectrum_only_outputs(config, Yf_tgt, Yf_int);
+                else
+                    [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ... %#ok<NASGU>
+                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+                    diagnostics_inputs = {Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf};
+                    fprintf('[Batch]     spectrum peaks | target=%.3f | interference=%.3f | intnoi=%.3f | tarnoi=%.3f | captured=%d\n', ...
+                        max(abs(Yf_tgt(:))), max(abs(Yf_int(:))), max(abs(Y_intnoi_tgt(:))), max(abs(Y_tarnoi_int(:))), numel(diagnostics_inputs));
+                    diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
+                        Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
+                        X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
+                end
 
                 manifest = [manifest; make_manifest_row(split_name, class_name, target_file, interf_file, sample_out_dir, 'ok')]; %#ok<AGROW>
             catch exc
@@ -197,9 +207,13 @@ if ~isfolder(sample_out_dir)
     mkdir(sample_out_dir);
 end
 figures_dir = fullfile(sample_out_dir, 'figures');
+spectrums_dir = fullfile(sample_out_dir, 'spectrums');
 results_dir = fullfile(sample_out_dir, 'results');
 if ~isfolder(figures_dir)
     mkdir(figures_dir);
+end
+if ~isfolder(spectrums_dir)
+    mkdir(spectrums_dir);
 end
 if ~isfolder(results_dir)
     mkdir(results_dir);
@@ -208,6 +222,54 @@ end
 
 function name = sanitize_name(name)
 name = regexprep(name, '[^a-zA-Z0-9_\-]', '_');
+end
+
+function save_spectrum_only_outputs(config, Yf_tgt, Yf_int)
+spectrums_dir = fullfile(config.output_dir, config.figure_subdir);
+if ~isfolder(spectrums_dir)
+    mkdir(spectrums_dir);
+end
+
+shared_spec_min = inf;
+shared_spec_max = -inf;
+for spectrum_data = {Yf_tgt, Yf_int}
+    spec_db = 20 * log10(abs(spectrum_data{1}) + eps);
+    shared_spec_min = min(shared_spec_min, min(spec_db(:)));
+    shared_spec_max = max(shared_spec_max, max(spec_db(:)));
+end
+
+spec_pairs = {
+    'enhanced_target_suppress_interference', Yf_tgt;
+    'enhanced_interference_suppress_target', Yf_int;
+};
+
+for idx = 1:size(spec_pairs, 1)
+    save_single_spectrum(spectrums_dir, spec_pairs{idx, 1}, spec_pairs{idx, 2}, shared_spec_min, shared_spec_max);
+end
+end
+
+function save_single_spectrum(output_dir, base_name, spectrum_data, spec_min, spec_max)
+if ndims(spectrum_data) == 3
+    spectrum_data = spectrum_data(:, :, 1);
+end
+
+spec_db = 20 * log10(abs(spectrum_data) + eps);
+if spec_max <= spec_min
+    spec_max = spec_min + 1;
+end
+
+file_path = fullfile(output_dir, [base_name '.png']);
+
+image_data = (spec_db - spec_min) / (spec_max - spec_min);
+image_data = max(min(image_data, 1), 0);
+
+fig = figure('Visible', 'off', 'Color', 'w');
+ax = axes('Parent', fig, 'Position', [0 0 1 1]);
+imagesc(ax, image_data);
+axis(ax, 'off', 'image');
+set(ax, 'LooseInset', [0 0 0 0], 'Visible', 'off');
+exportgraphics(fig, file_path, 'Resolution', 300, 'BackgroundColor', 'white');
+close(fig);
 end
 
 function row = make_manifest_row(split_name, class_name, target_file, interf_file, output_dir, status)
