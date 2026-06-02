@@ -38,8 +38,8 @@ config.shrink_alpha = 0;        % Shrinkage factor (0..0.3)
 config.M_signal = 2;               % Signal subspace dimension (0=full rank)
 
 %% Oracle covariance modes (for debug/upper bound evaluation)
-config.use_oracle_intnoi_cov = true;   % Use true interference+noise cov (target-steered)
-config.use_oracle_tarnoi_cov = true;    % Use true target+noise cov (interference-steered)
+config.use_oracle_intnoi_cov = false;   % Use true interference+noise cov (target-steered)
+config.use_oracle_tarnoi_cov = false;    % Use true target+noise cov (interference-steered)
 
 %% Source signal normalization
 config.normalize_source_rms = true;    % Normalize source RMS

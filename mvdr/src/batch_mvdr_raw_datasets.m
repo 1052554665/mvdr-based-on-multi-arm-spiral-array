@@ -19,7 +19,7 @@ else
 end
 
 if nargin < 1 || isempty(raw_root)
-    raw_root = fullfile(fileparts(project_root), 'raw_datasets');
+    raw_root = fullfile(project_root, 'raw_datasets');
 end
 if nargin < 2 || isempty(experiment_name)
     experiment_name = 'real_signal_dcbias_4k';
@@ -50,8 +50,8 @@ fprintf('  Batch MVDR on raw_datasets\n');
 fprintf('====================================================\n\n');
 
 for s = 1:numel(split_dirs)
-    split_name = split_dirs{s}.name;
-    split_root = split_dirs{s}.path;
+    split_name = split_dirs(s).name;
+    split_root = split_dirs(s).path;
     class_dirs = discover_class_dirs(split_root);
 
     normal_dir = find_normal_dir(class_dirs);
