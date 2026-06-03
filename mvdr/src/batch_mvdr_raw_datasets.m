@@ -2,11 +2,20 @@ function batch_mvdr_raw_datasets(raw_root, experiment_name, output_root)
 %% ============================================================
 %% Batch MVDR processing for raw_datasets
 %% ============================================================
-% Scans a dataset tree where Normal is the interference class and all
-% other subfolders are target classes. Each target file is randomly mixed
-% with one Normal file, then the MVDR pipeline exports two enhanced
-% spectra: target-steered (suppressing interference) and interference-
-% steered (suppressing target).
+% Pairs one representative waveform from each non-Normal class with
+% a Normal interference waveform. Each pair is processed by the MVDR
+% pipeline, exporting exactly two axis-free spectrograms per class:
+%   1) target_with_interference.png
+%   2) interference_with_target.png
+%
+% Output structure (flat, one folder per class):
+%   output/<experiment_name>/
+%   ├── DCBias/
+%   │   ├── target_with_interference.png
+%   │   └── interference_with_target.png
+%   ├── Harmonic/
+%   ├── Loosen/
+%   └── PartialDischarge/
 
 script_dir = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
@@ -20,19 +29,26 @@ else
     warning('MVDR:Path', 'RIR-Generator folder not found at %s', external_rir_dir);
 end
 
+% Bust MATLAB M-code cache to ensure edited modules are picked up
+clear functions;
+fprintf('[Batch] MATLAB function cache cleared.\n');
+
 if nargin < 1 || isempty(raw_root)
     raw_root = fullfile(project_root, 'raw_datasets');
 end
 if nargin < 2 || isempty(experiment_name)
-    experiment_name = 'raw_datasets_transformer';
+    experiment_name = 'batch_pairwise';
 end
 if nargin < 3 || isempty(output_root)
-    output_root = fullfile(project_root, 'output', 'raw_datasets_transformer');
+    output_root = fullfile(project_root, 'output', experiment_name);
 end
 
 base_config = load_config(experiment_name);
 base_config.output_dir = output_root;
 base_config.use_parallel_rir = false;
+
+fprintf('[Batch] Experiment: %s\n', experiment_name);
+fprintf('[Batch] Output root: %s\n', output_root);
 
 if ~isfolder(output_root)
     mkdir(output_root);
@@ -49,6 +65,14 @@ manifest = table();
 fprintf('\n====================================================\n');
 fprintf('  Batch MVDR on raw_datasets\n');
 fprintf('====================================================\n\n');
+
+fprintf('[Batch] Configuration check:\n');
+fprintf('  save_spectrums_only = %d\n', isfield(base_config, 'save_spectrums_only') && base_config.save_spectrums_only);
+fprintf('  figure_subdir = %s\n', base_config.figure_subdir);
+fprintf('  output_dir = %s\n', base_config.output_dir);
+fprintf('  save_figures = %d\n', base_config.save_figures);
+fprintf('  win_len = %d\n', base_config.win_len);
+fprintf('\n');
 
 for s = 1:numel(split_dirs)
     split_name = split_dirs(s).name;
@@ -81,50 +105,91 @@ for s = 1:numel(split_dirs)
             continue;
         end
 
-        fprintf('[Batch] Split=%s | Target class=%s | %d files\n', split_name, class_name, numel(target_files));
+        fprintf('[Batch] Class=%s | %d target file(s) available\n', class_name, numel(target_files));
 
-        for i = 1:numel(target_files)
-            target_file = target_files{i};
-            interf_file = normal_files{randi(numel(normal_files))};
+        % Pick one representative target + one fixed interference per class
+        target_file  = target_files{1};                         % first file in class
+        interf_file  = normal_files{1};                         % fixed Normal reference
+        [~, target_base, ~] = fileparts(target_file);
+        [~, interf_base, ~] = fileparts(interf_file);
 
-            [~, target_base, ~] = fileparts(target_file);
-            [~, interf_base, ~] = fileparts(interf_file);
-            sample_tag = sprintf('%s__%s', sanitize_name(target_base), sanitize_name(interf_base));
-            sample_out_dir = fullfile(output_root, split_name, class_name, sample_tag);
-            ensure_output_dirs(sample_out_dir);
+        % Flat output: <output_root>/<ClassName>/
+        sample_out_dir = fullfile(output_root, class_name);
 
-            config = base_config;
-            config.experiment_name = sprintf('%s_%s_%s', experiment_name, split_name, sanitize_name(class_name));
-            config.target_audio = target_file;
-            config.interf_audio = interf_file;
-            config.output_dir = sample_out_dir;
+        spectrum_only_mode = isfield(base_config, 'save_spectrums_only') && base_config.save_spectrums_only;
+        ensure_output_dirs(sample_out_dir, spectrum_only_mode);
 
-            fprintf('[Batch]   (%d/%d) target=%s | interf=%s\n', i, numel(target_files), target_base, interf_base);
+        config = base_config;
+        config.experiment_name = sprintf('%s_%s', experiment_name, sanitize_name(class_name));
+        config.target_audio  = target_file;
+        config.interf_audio   = interf_file;
+        config.output_dir     = sample_out_dir;
 
-            try
-                [mic_pos, ~, ~, ~, x_target, x_interf, ~, Nt, Nmic, r_center] = load_data_module(config);
-                [~, X_target, X_interf, X_noisy] = rir_generation_module(config, x_target, x_interf, mic_pos, Nt, Nmic);
-                spectrum_only_mode = isfield(config, 'save_spectrums_only') && config.save_spectrums_only;
-                if spectrum_only_mode
-                    [Yf_tgt, ~, ~, Yf_int, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~] = ...
-                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
-                    save_spectrum_only_outputs(config, Yf_tgt, Yf_int);
-                else
-                    [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ... %#ok<NASGU>
-                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
-                    diagnostics_inputs = {Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf};
-                    fprintf('[Batch]     spectrum peaks | target=%.3f | interference=%.3f | intnoi=%.3f | tarnoi=%.3f | captured=%d\n', ...
-                        max(abs(Yf_tgt(:))), max(abs(Yf_int(:))), max(abs(Y_intnoi_tgt(:))), max(abs(Y_tarnoi_int(:))), numel(diagnostics_inputs));
-                    diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
-                        Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
-                        X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
-                end
+        if spectrum_only_mode
+            config.figure_subdir = '';            % save PNGs directly in class folder
+        end
 
-                manifest = [manifest; make_manifest_row(split_name, class_name, target_file, interf_file, sample_out_dir, 'ok')]; %#ok<AGROW>
-            catch exc
-                warning('Failed on split=%s class=%s target=%s: %s', split_name, class_name, target_base, exc.message);
-                manifest = [manifest; make_manifest_row(split_name, class_name, target_file, interf_file, sample_out_dir, ['failed: ' exc.message])]; %#ok<AGROW>
+        fprintf('[Batch]   pair: target=%s | interference=%s\n', target_base, interf_base);
+        if spectrum_only_mode
+            fprintf('[Batch]   Mode: SPECTRUM_ONLY → 2 PNGs in %s/\n', sample_out_dir);
+        else
+            fprintf('[Batch]   Mode: FULL_DIAGNOSTICS\n');
+        end
+
+        % Pre-flight: check audio file durations
+        try
+            info_t = audioinfo(target_file);
+            info_i = audioinfo(interf_file);
+            min_dur_sec = config.win_len / config.fs;
+            if info_t.Duration < min_dur_sec || info_i.Duration < min_dur_sec
+                skip_reason = sprintf('skipped: audio too short (target=%.0f ms, interf=%.0f ms, min=%.0f ms)', ...
+                    info_t.Duration*1000, info_i.Duration*1000, min_dur_sec*1000);
+                fprintf('[Batch]   ⚠ SKIPPING: %s\n', skip_reason);
+                manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, skip_reason)]; %#ok<AGROW>
+                continue;
             end
+        catch info_exc
+            fprintf('[Batch]   ⚠ WARNING: Could not read audio info: %s. Proceeding anyway...\n', info_exc.message);
+        end
+
+        try
+            fprintf('[Batch]   Step 1/3: Loading data module...\n');
+            [mic_pos, ~, ~, ~, x_target, x_interf, ~, Nt, Nmic, r_center] = load_data_module(config);
+
+            fprintf('[Batch]   Step 2/3: Generating RIRs...\n');
+            [~, X_target, X_interf, X_noisy] = rir_generation_module(config, x_target, x_interf, mic_pos, Nt, Nmic);
+
+            if spectrum_only_mode
+                fprintf('[Batch]   Step 3/3: Running MVDR and saving two spectrograms...\n');
+
+                % Belt-and-suspenders: ensure all signals have consistent ≥ win_len rows
+                target_len = max([size(X_noisy,1), size(X_target,1), size(X_interf,1), config.win_len]);
+                if size(X_noisy,1)  < target_len, X_noisy(target_len, Nmic)  = 0; end
+                if size(X_target,1) < target_len, X_target(target_len, Nmic) = 0; end
+                if size(X_interf,1) < target_len, X_interf(target_len, Nmic) = 0; end
+                fprintf('[Batch]   Signal dims: X_noisy [%d×%d], X_target [%d×%d], X_interf [%d×%d]\n', ...
+                    size(X_noisy,1), size(X_noisy,2), size(X_target,1), size(X_target,2), size(X_interf,1), size(X_interf,2));
+
+                [Yf_tgt, ~, ~, Yf_int, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~] = ...
+                    mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+
+                save_two_spectrograms_only(config, Yf_tgt, Yf_int);
+                fprintf('[Batch]   ✓ Spectrograms saved\n');
+            else
+                [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, ...
+                    S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ... %#ok<NASGU>
+                    mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+                diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
+                    Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
+                    X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
+            end
+
+            manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, 'ok')]; %#ok<AGROW>
+        catch exc
+            fprintf('[Batch]   ✗ ERROR: %s\n', exc.message);
+            fprintf('[Batch]     in %s line %d\n', exc.stack(1).name, exc.stack(1).line);
+            warning('Failed on class=%s target=%s: %s', class_name, target_base, exc.message);
+            manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, ['failed: ' exc.message])]; %#ok<AGROW>
         end
     end
 end
@@ -133,6 +198,18 @@ if ~isempty(manifest)
     manifest_path = fullfile(output_root, 'batch_manifest.csv');
     writetable(manifest, manifest_path);
     fprintf('\n[Batch] Manifest saved to %s\n', manifest_path);
+
+    % Print summary
+    n_total = height(manifest);
+    n_ok = sum(contains(manifest.status, 'ok'));
+    n_skip = sum(contains(manifest.status, 'skipped'));
+    n_fail = sum(contains(manifest.status, 'failed'));
+    fprintf('[Batch] ====== SUMMARY ======\n');
+    fprintf('[Batch]   Total pairs:  %d\n', n_total);
+    fprintf('[Batch]   OK:           %d\n', n_ok);
+    fprintf('[Batch]   Skipped:      %d\n', n_skip);
+    fprintf('[Batch]   Failed:       %d\n', n_fail);
+    fprintf('[Batch] =====================\n');
 end
 
 fprintf('\n[Batch] Completed. Outputs are under %s\n', output_root);
@@ -183,6 +260,16 @@ for k = 1:numel(class_dirs)
 end
 end
 
+function class_dir = find_class_dir(class_dirs, target_name)
+class_dir = '';
+for k = 1:numel(class_dirs)
+    if strcmpi(class_dirs(k).name, target_name)
+        class_dir = class_dirs(k).path;
+        return;
+    end
+end
+end
+
 function tf = is_normal_name(name)
 tf = strcmpi(name, 'Normal') || strcmpi(name, 'normal');
 end
@@ -202,21 +289,20 @@ for k = 1:numel(entries)
 end
 end
 
-function ensure_output_dirs(sample_out_dir)
+function ensure_output_dirs(sample_out_dir, spectrum_only_mode)
 if ~isfolder(sample_out_dir)
     mkdir(sample_out_dir);
 end
-figures_dir = fullfile(sample_out_dir, 'figures');
-spectrums_dir = fullfile(sample_out_dir, 'spectrums');
-results_dir = fullfile(sample_out_dir, 'results');
-if ~isfolder(figures_dir)
-    mkdir(figures_dir);
-end
-if ~isfolder(spectrums_dir)
-    mkdir(spectrums_dir);
-end
-if ~isfolder(results_dir)
-    mkdir(results_dir);
+
+if ~spectrum_only_mode
+    figures_dir = fullfile(sample_out_dir, 'figures');
+    results_dir = fullfile(sample_out_dir, 'results');
+    if ~isfolder(figures_dir)
+        mkdir(figures_dir);
+    end
+    if ~isfolder(results_dir)
+        mkdir(results_dir);
+    end
 end
 end
 
@@ -224,55 +310,65 @@ function name = sanitize_name(name)
 name = regexprep(name, '[^a-zA-Z0-9_\-]', '_');
 end
 
-function save_spectrum_only_outputs(config, Yf_tgt, Yf_int)
-spectrums_dir = fullfile(config.output_dir, config.figure_subdir);
-if ~isfolder(spectrums_dir)
-    mkdir(spectrums_dir);
+function save_two_spectrograms_only(config, Yf_tgt, Yf_int)
+%% Save exactly two MVDR spectrograms into config.output_dir
+% When config.figure_subdir is non-empty, saves into that subdirectory;
+% otherwise saves directly into config.output_dir.
+
+fprintf('[Batch]     Saving two spectrograms...\n');
+
+if isfield(config, 'figure_subdir') && ~isempty(config.figure_subdir)
+    spectrum_dir = fullfile(config.output_dir, config.figure_subdir);
+else
+    spectrum_dir = config.output_dir;
+end
+fprintf('[Batch]     Output dir: %s\n', spectrum_dir);
+
+if ~isfolder(spectrum_dir)
+    mkdir(spectrum_dir);
 end
 
-shared_spec_min = inf;
-shared_spec_max = -inf;
-for spectrum_data = {Yf_tgt, Yf_int}
-    spec_db = 20 * log10(abs(spectrum_data{1}) + eps);
-    shared_spec_min = min(shared_spec_min, min(spec_db(:)));
-    shared_spec_max = max(shared_spec_max, max(spec_db(:)));
+plot_style = config.plot_style;
+if isfield(plot_style, 'colormap_name')
+    cmap_name = plot_style.colormap_name;
+else
+    cmap_name = 'turbo';
+end
+figure_bg = plot_style.figure_bg;
+
+P_tgt = 20 * log10(abs(Yf_tgt) + eps);
+P_int = 20 * log10(abs(Yf_int) + eps);
+all_spec_vals = [P_tgt(:); P_int(:)];
+spec_clim_max = max(all_spec_vals);
+spec_clim_min = spec_clim_max - 80;
+
+fprintf('[Batch]     Color limits: min=%.2f, max=%.2f dB\n', spec_clim_min, spec_clim_max);
+
+save_single_spectrum(spectrum_dir, 'target_with_interference', P_tgt, cmap_name, figure_bg, spec_clim_min, spec_clim_max);
+save_single_spectrum(spectrum_dir, 'interference_with_target', P_int, cmap_name, figure_bg, spec_clim_min, spec_clim_max);
+
+fprintf('[Batch]     ✓ 2 PNGs saved to %s/\n', spectrum_dir);
 end
 
-spec_pairs = {
-    'enhanced_target_suppress_interference', Yf_tgt;
-    'enhanced_interference_suppress_target', Yf_int;
-};
+function save_single_spectrum(output_dir, base_name, spec_db, cmap_name, figure_bg, spec_min, spec_max)
+file_path = fullfile(output_dir, [base_name '.png']);
 
-for idx = 1:size(spec_pairs, 1)
-    save_single_spectrum(spectrums_dir, spec_pairs{idx, 1}, spec_pairs{idx, 2}, shared_spec_min, shared_spec_max);
-end
-end
-
-function save_single_spectrum(output_dir, base_name, spectrum_data, spec_min, spec_max)
-if ndims(spectrum_data) == 3
-    spectrum_data = spectrum_data(:, :, 1);
-end
-
-spec_db = 20 * log10(abs(spectrum_data) + eps);
 if spec_max <= spec_min
     spec_max = spec_min + 1;
 end
 
-file_path = fullfile(output_dir, [base_name '.png']);
-
-image_data = (spec_db - spec_min) / (spec_max - spec_min);
-image_data = max(min(image_data, 1), 0);
-
-fig = figure('Visible', 'off', 'Color', 'w');
+fig = figure('Visible', 'off', 'Color', figure_bg);
 ax = axes('Parent', fig, 'Position', [0 0 1 1]);
-imagesc(ax, image_data);
+imagesc(ax, spec_db);
 axis(ax, 'off', 'image');
-set(ax, 'LooseInset', [0 0 0 0], 'Visible', 'off');
-exportgraphics(fig, file_path, 'Resolution', 300, 'BackgroundColor', 'white');
+set(ax, 'Visible', 'off', 'LooseInset', [0 0 0 0]);
+colormap(fig, cmap_name);
+clim(ax, [spec_min spec_max]);
+exportgraphics(fig, file_path, 'Resolution', 300, 'BackgroundColor', figure_bg);
 close(fig);
 end
 
-function row = make_manifest_row(split_name, class_name, target_file, interf_file, output_dir, status)
-row = table(string(split_name), string(class_name), string(target_file), string(interf_file), string(output_dir), string(status), ...
-    'VariableNames', {'split', 'target_class', 'target_file', 'interf_file', 'output_dir', 'status'});
+function row = make_manifest_row(class_name, target_file, interf_file, output_dir, status)
+row = table(string(class_name), string(target_file), string(interf_file), string(output_dir), string(status), ...
+    'VariableNames', {'target_class', 'target_file', 'interf_file', 'output_dir', 'status'});
 end

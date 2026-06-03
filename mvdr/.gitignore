@@ -3,6 +3,7 @@ datasets/
 *.npy
 *.mat
 raw_datasets/
+output/batch_pairwise/  # 仅忽略 batch_pairwise 实验的输出，保留其他实验的输出
 
 # 模型权重
 checkpoints/

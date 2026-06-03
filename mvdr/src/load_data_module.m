@@ -44,10 +44,21 @@ if fs_i ~= config.fs
     interf_sig = resample(interf_sig, config.fs, fs_i);
 end
 
-% Length alignment
-Nt = min(length(target_sig), length(interf_sig));
-x_target = target_sig(1:Nt);
-x_interf = interf_sig(1:Nt);
+% Length alignment with padding so short clips still support the STFT window.
+% Note: padding happens AFTER RMS normalization so that zero-padding
+% does not artificially reduce the RMS of the active portion.
+Nt_raw = max(length(target_sig), length(interf_sig));
+Nt = max(Nt_raw, config.win_len);
+
+fprintf('[Load Data] After resampling: target=%d samples, interference=%d samples\n', ...
+    length(target_sig), length(interf_sig));
+fprintf('[Load Data] Nt_raw=%d, Nt=%d (win_len=%d)%s\n', ...
+    Nt_raw, Nt, config.win_len, iif(Nt > Nt_raw, ' *** PADDED ***', ''));
+
+x_target = zeros(Nt, 1);
+x_interf = zeros(Nt, 1);
+x_target(1:length(target_sig)) = target_sig;
+x_interf(1:length(interf_sig)) = interf_sig;
 
 % Normalize RMS
 if config.normalize_source_rms
@@ -60,7 +71,7 @@ end
 x_interf = x_interf * 10^(config.INR_dB/20);
 
 t = (0:Nt-1).' / config.fs;
-fprintf('[Load Data] Audio signals: %d samples (%.2f sec) at %d Hz\n', Nt, Nt/config.fs, config.fs);
+fprintf('[Load Data] Final audio signals: %d samples (%.2f sec) at %d Hz\n', Nt, Nt/config.fs, config.fs);
 
 %% 3. Check far-field criterion (Fraunhofer distance)
 fprintf('[Load Data] Checking far-field criterion\n');

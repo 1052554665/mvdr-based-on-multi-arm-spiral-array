@@ -7,6 +7,20 @@ function [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, .
 
 fprintf('\n[MVDR] Starting MVDR processing...\n');
 
+%% 0. Pre-flight signal length check and auto-padding (defensive safety net)
+sig_len = size(X_noisy, 1);
+if sig_len < config.win_len
+    fprintf('[MVDR] ⚠ WARNING: Input signal length %d < window length %d. Auto-padding...\n', ...
+        sig_len, config.win_len);
+    pad_len = config.win_len - sig_len;
+    X_noisy = [X_noisy; zeros(pad_len, Nmic)];
+    X_target = [X_target; zeros(pad_len, Nmic)];
+    X_interf = [X_interf; zeros(pad_len, Nmic)];
+    fprintf('[MVDR] ✓ Padded signals from %d to %d samples (+%d zeros)\n', sig_len, config.win_len, pad_len);
+else
+    fprintf('[MVDR] ✓ Signal length %d >= window length %d — OK\n', sig_len, config.win_len);
+end
+
 %% 1. Compute STFT for all signals
 fprintf('[MVDR] Computing STFT...\n');
 

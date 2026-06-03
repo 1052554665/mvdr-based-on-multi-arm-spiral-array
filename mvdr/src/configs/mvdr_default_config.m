@@ -63,6 +63,7 @@ config.array_diameter = 0.15;      % Maximum array diameter (m)
 %% Display and output
 config.verbose = true;             % Verbose console output
 config.save_figures = true;        % Save PDF figures
+config.save_spectrums_only = false; % When true, only save the 2 MVDR spectrograms (skip diagnostics)
 config.output_dir = '../output';   % Output directory for figures
 config.figure_subdir = 'real_signal'; % Subdirectory for figures/results inside output_dir
 
