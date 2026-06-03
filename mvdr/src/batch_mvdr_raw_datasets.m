@@ -334,7 +334,6 @@ if isfield(plot_style, 'colormap_name')
 else
     cmap_name = 'turbo';
 end
-figure_bg = plot_style.figure_bg;
 
 P_tgt = 20 * log10(abs(Yf_tgt) + eps);
 P_int = 20 * log10(abs(Yf_int) + eps);
@@ -344,28 +343,31 @@ spec_clim_min = spec_clim_max - 80;
 
 fprintf('[Batch]     Color limits: min=%.2f, max=%.2f dB\n', spec_clim_min, spec_clim_max);
 
-save_single_spectrum(spectrum_dir, 'target_with_interference', P_tgt, cmap_name, figure_bg, spec_clim_min, spec_clim_max);
-save_single_spectrum(spectrum_dir, 'interference_with_target', P_int, cmap_name, figure_bg, spec_clim_min, spec_clim_max);
+save_single_spectrum(spectrum_dir, 'target_with_interference', P_tgt, cmap_name, spec_clim_min, spec_clim_max);
+save_single_spectrum(spectrum_dir, 'interference_with_target', P_int, cmap_name, spec_clim_min, spec_clim_max);
 
 fprintf('[Batch]     ✓ 2 PNGs saved to %s/\n', spectrum_dir);
 end
 
-function save_single_spectrum(output_dir, base_name, spec_db, cmap_name, figure_bg, spec_min, spec_max)
+function save_single_spectrum(output_dir, base_name, spec_db, cmap_name, spec_min, spec_max)
+%% Save a single spectrogram as a 224×224 PNG (transformer-ready).
 file_path = fullfile(output_dir, [base_name '.png']);
 
 if spec_max <= spec_min
     spec_max = spec_min + 1;
 end
 
-fig = figure('Visible', 'off', 'Color', figure_bg);
-ax = axes('Parent', fig, 'Position', [0 0 1 1]);
-imagesc(ax, spec_db);
-axis(ax, 'off', 'image');
-set(ax, 'Visible', 'off', 'LooseInset', [0 0 0 0]);
-colormap(fig, cmap_name);
-clim(ax, [spec_min spec_max]);
-exportgraphics(fig, file_path, 'Resolution', 300, 'BackgroundColor', figure_bg);
-close(fig);
+% Resize spectrogram data to 224×224
+spec_resized = imresize(spec_db, [224, 224], 'bilinear');
+
+% Map dB values to [0, 1] then to 8-bit colormap indices
+spec_norm = (spec_resized - spec_min) / (spec_max - spec_min);
+spec_norm = min(max(spec_norm, 0), 1);          % clamp to [0, 1]
+
+cmap = feval(cmap_name, 256);
+img_rgb = ind2rgb(uint8(spec_norm * 255), cmap);
+
+imwrite(img_rgb, file_path);
 end
 
 function row = make_manifest_row(class_name, target_file, interf_file, output_dir, status)

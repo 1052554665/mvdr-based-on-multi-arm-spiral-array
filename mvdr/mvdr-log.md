@@ -1,8 +1,7 @@
 
-- Both saved as high-resolution PNG images (300 DPI) with white backgrounds, suitable for transformer training pipelines.
 
-- Expected Output Structure:
 
+- The expected structure is as follow, i.e. It should iterate all the waveform for target.
 ```
 output/batch_pairwise/
 ├── DCBias/
@@ -19,23 +18,4 @@ output/batch_pairwise/
 │       └── ...
 └── PartialDischarge/
         └── ...
-```
-
-- Current Output Structure:
-
-```
-output/batch_pairwise/
-├── DCBias/
-│   ├── target_with_interference.png
-│   └── interference_with_target.png
-├── Harmonic/
-│   ├── target_with_interference.png
-│   └── interference_with_target.png
-├── Loosen/
-│   ├── target_with_interference.png
-│   └── interference_with_target.png
-├── PartialDischarge/
-│   ├── target_with_interference.png
-│   └── interference_with_target.png
-└── batch_manifest.csv
 ```
