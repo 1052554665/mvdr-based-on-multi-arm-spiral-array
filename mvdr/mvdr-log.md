@@ -1,7 +1,4 @@
-
-
-
-- The expected structure is as follow, i.e. It should iterate all the waveform for target.
+- The structure is as follow.
 ```
 output/batch_pairwise/
 ├── DCBias/

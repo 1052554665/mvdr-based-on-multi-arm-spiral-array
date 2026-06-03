@@ -2,17 +2,19 @@ function batch_mvdr_raw_datasets(raw_root, experiment_name, output_root)
 %% ============================================================
 %% Batch MVDR processing for raw_datasets
 %% ============================================================
-% Pairs one representative waveform from each non-Normal class with
-% a Normal interference waveform. Each pair is processed by the MVDR
-% pipeline, exporting exactly two axis-free spectrograms per class:
+% Pairs every waveform from each non-Normal class with a randomly
+% chosen Normal interference waveform. Each pair is processed by the MVDR
+% pipeline, exporting exactly two 224×224 spectrograms per pair:
 %   1) target_with_interference.png
 %   2) interference_with_target.png
 %
-% Output structure (flat, one folder per class):
+% Output structure (one subfolder per pair):
 %   output/<experiment_name>/
 %   ├── DCBias/
-%   │   ├── target_with_interference.png
-%   │   └── interference_with_target.png
+%   │   ├── <target>__<interference>/
+%   │   │   ├── target_with_interference.png
+%   │   │   └── interference_with_target.png
+%   │   └── ...
 %   ├── Harmonic/
 %   ├── Loosen/
 %   └── PartialDischarge/
@@ -107,89 +109,91 @@ for s = 1:numel(split_dirs)
 
         fprintf('[Batch] Class=%s | %d target file(s) available\n', class_name, numel(target_files));
 
-        % Pick one representative target + one fixed interference per class
-        target_file  = target_files{1};                         % first file in class
-        interf_file  = normal_files{1};                         % fixed Normal reference
-        [~, target_base, ~] = fileparts(target_file);
-        [~, interf_base, ~] = fileparts(interf_file);
+        for i = 1:numel(target_files)
+            target_file = target_files{i};
+            interf_file = normal_files{randi(numel(normal_files))};
 
-        % Flat output: <output_root>/<ClassName>/
-        sample_out_dir = fullfile(output_root, class_name);
+            [~, target_base, ~] = fileparts(target_file);
+            [~, interf_base, ~] = fileparts(interf_file);
+            sample_tag = sprintf('%s__%s', sanitize_name(target_base), sanitize_name(interf_base));
 
-        spectrum_only_mode = isfield(base_config, 'save_spectrums_only') && base_config.save_spectrums_only;
-        ensure_output_dirs(sample_out_dir, spectrum_only_mode);
+            % Output: <output_root>/<ClassName>/<target>__<interference>/
+            sample_out_dir = fullfile(output_root, class_name, sample_tag);
 
-        config = base_config;
-        config.experiment_name = sprintf('%s_%s', experiment_name, sanitize_name(class_name));
-        config.target_audio  = target_file;
-        config.interf_audio   = interf_file;
-        config.output_dir     = sample_out_dir;
+            spectrum_only_mode = isfield(base_config, 'save_spectrums_only') && base_config.save_spectrums_only;
+            ensure_output_dirs(sample_out_dir, spectrum_only_mode);
 
-        if spectrum_only_mode
-            config.figure_subdir = '';            % save PNGs directly in class folder
-        end
-
-        fprintf('[Batch]   pair: target=%s | interference=%s\n', target_base, interf_base);
-        if spectrum_only_mode
-            fprintf('[Batch]   Mode: SPECTRUM_ONLY → 2 PNGs in %s/\n', sample_out_dir);
-        else
-            fprintf('[Batch]   Mode: FULL_DIAGNOSTICS\n');
-        end
-
-        % Pre-flight: check audio file durations
-        try
-            info_t = audioinfo(target_file);
-            info_i = audioinfo(interf_file);
-            min_dur_sec = config.win_len / config.fs;
-            if info_t.Duration < min_dur_sec || info_i.Duration < min_dur_sec
-                skip_reason = sprintf('skipped: audio too short (target=%.0f ms, interf=%.0f ms, min=%.0f ms)', ...
-                    info_t.Duration*1000, info_i.Duration*1000, min_dur_sec*1000);
-                fprintf('[Batch]   ⚠ SKIPPING: %s\n', skip_reason);
-                manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, skip_reason)]; %#ok<AGROW>
-                continue;
-            end
-        catch info_exc
-            fprintf('[Batch]   ⚠ WARNING: Could not read audio info: %s. Proceeding anyway...\n', info_exc.message);
-        end
-
-        try
-            fprintf('[Batch]   Step 1/3: Loading data module...\n');
-            [mic_pos, ~, ~, ~, x_target, x_interf, ~, Nt, Nmic, r_center] = load_data_module(config);
-
-            fprintf('[Batch]   Step 2/3: Generating RIRs...\n');
-            [~, X_target, X_interf, X_noisy] = rir_generation_module(config, x_target, x_interf, mic_pos, Nt, Nmic);
+            config = base_config;
+            config.experiment_name = sprintf('%s_%s', experiment_name, sanitize_name(class_name));
+            config.target_audio  = target_file;
+            config.interf_audio   = interf_file;
+            config.output_dir     = sample_out_dir;
 
             if spectrum_only_mode
-                fprintf('[Batch]   Step 3/3: Running MVDR and saving two spectrograms...\n');
-
-                % Belt-and-suspenders: ensure all signals have consistent ≥ win_len rows
-                target_len = max([size(X_noisy,1), size(X_target,1), size(X_interf,1), config.win_len]);
-                if size(X_noisy,1)  < target_len, X_noisy(target_len, Nmic)  = 0; end
-                if size(X_target,1) < target_len, X_target(target_len, Nmic) = 0; end
-                if size(X_interf,1) < target_len, X_interf(target_len, Nmic) = 0; end
-                fprintf('[Batch]   Signal dims: X_noisy [%d×%d], X_target [%d×%d], X_interf [%d×%d]\n', ...
-                    size(X_noisy,1), size(X_noisy,2), size(X_target,1), size(X_target,2), size(X_interf,1), size(X_interf,2));
-
-                [Yf_tgt, ~, ~, Yf_int, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~] = ...
-                    mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
-
-                save_two_spectrograms_only(config, Yf_tgt, Yf_int);
-                fprintf('[Batch]   ✓ Spectrograms saved\n');
-            else
-                [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, ...
-                    S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ... %#ok<NASGU>
-                    mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
-                diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
-                    Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
-                    X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
+                config.figure_subdir = '';            % save PNGs directly in pair folder
             end
 
-            manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, 'ok')]; %#ok<AGROW>
-        catch exc
-            fprintf('[Batch]   ✗ ERROR: %s\n', exc.message);
-            fprintf('[Batch]     in %s line %d\n', exc.stack(1).name, exc.stack(1).line);
-            warning('Failed on class=%s target=%s: %s', class_name, target_base, exc.message);
-            manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, ['failed: ' exc.message])]; %#ok<AGROW>
+            fprintf('[Batch]   (%d/%d) pair: target=%s | interference=%s\n', ...
+                i, numel(target_files), target_base, interf_base);
+            if spectrum_only_mode
+                fprintf('[Batch]     Mode: SPECTRUM_ONLY\n');
+            else
+                fprintf('[Batch]     Mode: FULL_DIAGNOSTICS\n');
+            end
+
+            % Pre-flight: check audio file durations
+            try
+                info_t = audioinfo(target_file);
+                info_i = audioinfo(interf_file);
+                min_dur_sec = config.win_len / config.fs;
+                if info_t.Duration < min_dur_sec || info_i.Duration < min_dur_sec
+                    skip_reason = sprintf('skipped: audio too short (target=%.0f ms, interf=%.0f ms, min=%.0f ms)', ...
+                        info_t.Duration*1000, info_i.Duration*1000, min_dur_sec*1000);
+                    fprintf('[Batch]     ⚠ SKIPPING: %s\n', skip_reason);
+                    manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, skip_reason)]; %#ok<AGROW>
+                    continue;
+                end
+            catch info_exc
+                fprintf('[Batch]     ⚠ WARNING: Could not read audio info: %s. Proceeding anyway...\n', info_exc.message);
+            end
+
+            try
+                fprintf('[Batch]     Step 1/3: Loading data module...\n');
+                [mic_pos, ~, ~, ~, x_target, x_interf, ~, Nt, Nmic, r_center] = load_data_module(config);
+
+                fprintf('[Batch]     Step 2/3: Generating RIRs...\n');
+                [~, X_target, X_interf, X_noisy] = rir_generation_module(config, x_target, x_interf, mic_pos, Nt, Nmic);
+
+                if spectrum_only_mode
+                    fprintf('[Batch]     Step 3/3: Running MVDR and saving two spectrograms...\n');
+
+                    % Belt-and-suspenders: ensure all signals have consistent ≥ win_len rows
+                    target_len = max([size(X_noisy,1), size(X_target,1), size(X_interf,1), config.win_len]);
+                    if size(X_noisy,1)  < target_len, X_noisy(target_len, Nmic)  = 0; end
+                    if size(X_target,1) < target_len, X_target(target_len, Nmic) = 0; end
+                    if size(X_interf,1) < target_len, X_interf(target_len, Nmic) = 0; end
+
+                    [Yf_tgt, ~, ~, Yf_int, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~, ~] = ...
+                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+
+                    save_two_spectrograms_only(config, Yf_tgt, Yf_int);
+                    fprintf('[Batch]     ✓ Spectrograms saved\n');
+                else
+                    [Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, Yf_int, Y_interf_int, Y_tarnoi_int, ...
+                        S, S_tar, S_interf, S_intnoi, S_tarnoi, F, T, a_target, a_interf] = ... %#ok<NASGU>
+                        mvdr_processing_module(config, X_noisy, X_target, X_interf, mic_pos, r_center, Nt, Nmic);
+                    diagnostics_and_visualization_module(config, Yf_tgt, Y_tar_tgt, Y_intnoi_tgt, ...
+                        Yf_int, Y_interf_int, Y_tarnoi_int, S, S_interf, S_intnoi, S_tarnoi, ...
+                        X_noisy, X_target, X_interf, F, T, a_target, a_interf, mic_pos, r_center, Nt, Nmic);
+                end
+
+                manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, 'ok')]; %#ok<AGROW>
+            catch exc
+                fprintf('[Batch]     ✗ ERROR: %s\n', exc.message);
+                fprintf('[Batch]       in %s line %d\n', exc.stack(1).name, exc.stack(1).line);
+                warning('Failed on class=%s target=%s: %s', class_name, target_base, exc.message);
+                manifest = [manifest; make_manifest_row(class_name, target_file, interf_file, sample_out_dir, ['failed: ' exc.message])]; %#ok<AGROW>
+            end
         end
     end
 end
