@@ -1,9 +1,12 @@
 # 数据集
 data/
+experiments/
+datasets-npz/
 *.csv
 *.npy
 *.mat
 *.npz
+
 
 # 模型权重
 checkpoints/
@@ -18,7 +21,7 @@ runs/
 
 # 可视化结果
 figures/
-*.png
+# *.png
 *.jpg
 
 # Python缓存

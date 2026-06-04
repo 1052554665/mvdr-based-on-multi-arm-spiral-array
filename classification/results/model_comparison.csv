@@ -1,0 +1,3 @@
+model,accuracy,precision_macro,recall_macro,f1_macro,train_time_sec,best_params
+Random Forest,1.0,1.0,1.0,1.0,403.6383168697357,"{'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}"
+MLP (Small),1.0,1.0,1.0,1.0,3.984114646911621,"{'hidden_dims': (64, 32), 'dropout': 0.3, 'lr': 0.001, 'weight_decay': 0.001}"

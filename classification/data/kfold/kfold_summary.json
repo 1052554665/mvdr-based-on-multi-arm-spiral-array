@@ -1,0 +1,90 @@
+{
+  "n_folds": 5,
+  "folds": [
+    {
+      "fold": 0,
+      "train_size": 198,
+      "val_size": 50,
+      "train_dist": {
+        "DCBias": 50,
+        "Harmonic": 47,
+        "Loosen": 50,
+        "PartialDischarge": 51
+      },
+      "val_dist": {
+        "DCBias": 13,
+        "Harmonic": 12,
+        "Loosen": 13,
+        "PartialDischarge": 12
+      }
+    },
+    {
+      "fold": 1,
+      "train_size": 198,
+      "val_size": 50,
+      "train_dist": {
+        "DCBias": 50,
+        "Harmonic": 47,
+        "Loosen": 50,
+        "PartialDischarge": 51
+      },
+      "val_dist": {
+        "DCBias": 13,
+        "Harmonic": 12,
+        "Loosen": 13,
+        "PartialDischarge": 12
+      }
+    },
+    {
+      "fold": 2,
+      "train_size": 198,
+      "val_size": 50,
+      "train_dist": {
+        "DCBias": 50,
+        "Harmonic": 47,
+        "Loosen": 51,
+        "PartialDischarge": 50
+      },
+      "val_dist": {
+        "DCBias": 13,
+        "Harmonic": 12,
+        "Loosen": 12,
+        "PartialDischarge": 13
+      }
+    },
+    {
+      "fold": 3,
+      "train_size": 199,
+      "val_size": 49,
+      "train_dist": {
+        "DCBias": 51,
+        "Harmonic": 47,
+        "Loosen": 51,
+        "PartialDischarge": 50
+      },
+      "val_dist": {
+        "DCBias": 12,
+        "Harmonic": 12,
+        "Loosen": 12,
+        "PartialDischarge": 13
+      }
+    },
+    {
+      "fold": 4,
+      "train_size": 199,
+      "val_size": 49,
+      "train_dist": {
+        "DCBias": 51,
+        "Harmonic": 48,
+        "Loosen": 50,
+        "PartialDischarge": 50
+      },
+      "val_dist": {
+        "DCBias": 12,
+        "Harmonic": 11,
+        "Loosen": 13,
+        "PartialDischarge": 13
+      }
+    }
+  ]
+}

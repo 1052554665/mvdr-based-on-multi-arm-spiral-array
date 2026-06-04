@@ -1,0 +1,45 @@
+{
+  "class_names": [
+    "DCBias",
+    "Harmonic",
+    "Loosen",
+    "PartialDischarge"
+  ],
+  "class_to_idx": {
+    "DCBias": 0,
+    "Harmonic": 1,
+    "Loosen": 2,
+    "PartialDischarge": 3
+  },
+  "num_classes": 4,
+  "total_samples": 355,
+  "train_samples": 248,
+  "val_samples": 53,
+  "test_samples": 54,
+  "feature_shape_flat": 8192,
+  "feature_shape_img": [
+    1,
+    128,
+    64
+  ],
+  "class_distribution": {
+    "train": {
+      "DCBias": 63,
+      "Harmonic": 59,
+      "Loosen": 63,
+      "PartialDischarge": 63
+    },
+    "val": {
+      "DCBias": 14,
+      "Harmonic": 13,
+      "Loosen": 13,
+      "PartialDischarge": 13
+    },
+    "test": {
+      "DCBias": 13,
+      "Harmonic": 13,
+      "Loosen": 14,
+      "PartialDischarge": 14
+    }
+  }
+}

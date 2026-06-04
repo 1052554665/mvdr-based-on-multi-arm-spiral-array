@@ -1,0 +1,64 @@
+{
+  "model": "MLP (Small)",
+  "test": {
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "f1_macro": 1.0,
+    "precision_per_class": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "recall_per_class": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "f1_per_class": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "confusion_matrix": [
+      [
+        13,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        13,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        14,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        14
+      ]
+    ],
+    "classification_report": "                  precision    recall  f1-score   support\n\n          DCBias       1.00      1.00      1.00        13\n        Harmonic       1.00      1.00      1.00        13\n          Loosen       1.00      1.00      1.00        14\nPartialDischarge       1.00      1.00      1.00        14\n\n        accuracy                           1.00        54\n       macro avg       1.00      1.00      1.00        54\n    weighted avg       1.00      1.00      1.00        54\n"
+  },
+  "best_params": {
+    "hidden_dims": [
+      64,
+      32
+    ],
+    "dropout": 0.3,
+    "lr": 0.001,
+    "weight_decay": 0.001
+  },
+  "train_time_sec": 3.984114646911621
+}
