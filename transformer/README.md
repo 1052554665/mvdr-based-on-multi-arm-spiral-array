@@ -117,6 +117,10 @@ python scripts/train.py --config configs/train.yaml
   python scripts/evaluate.py --config configs/train.yaml --checkpoint experiments/train/best_model.pth --output-dir enhancement_report --num-samples 20
   ```
 
+data generation:
+```bash
+python transformer/scripts/train.py --config transformer/configs/train_pairwise.yaml
+```
 
 
 ## Docker 里训练（已配置挂载）

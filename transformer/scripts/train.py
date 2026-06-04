@@ -46,21 +46,8 @@ def resolve_config_path(config_arg: str, project_root: Path) -> Path:
     )
 
 
-def main():
-    args = parse_args()
-    project_root = PROJECT_ROOT
-
-    config_path = resolve_config_path(args.config, project_root)
-    config = load_config(config_path)
-
-    data_dir = args.data_dir if args.data_dir is not None else config.get("data", {}).get("data_dir")
-    if data_dir is not None:
-        data_dir = str((project_root / data_dir).resolve()) if not Path(data_dir).is_absolute() else data_dir
-
-    output_dir = args.output_dir if args.output_dir is not None else config.get("runtime", {}).get("output_dir")
-    if output_dir is not None:
-        output_dir = str((project_root / output_dir).resolve()) if not Path(output_dir).is_absolute() else output_dir
-
+def _run_single_category(config, data_dir, output_dir, project_root):
+    """Train and export enhanced outputs for a single data directory."""
     model, test_dataset, _, device = train_model(config, data_dir=data_dir, output_dir=output_dir)
 
     if test_dataset is not None and len(test_dataset) > 0:
@@ -85,12 +72,53 @@ def main():
         )
         print(f"Saved {saved_count} enhanced spectrogram samples to {output_root / 'enhanced_outputs'}")
         try:
-            report_path = generate_enhancement_report(model, test_loader, device, output_dir=str(output_root / "enhancement_report"), num_samples=min(10, len(test_dataset)))
+            report_path = generate_enhancement_report(
+                model, test_loader, device,
+                output_dir=str(output_root / "enhancement_report"),
+                num_samples=min(10, len(test_dataset)),
+            )
             print(f"Evaluation report saved to {report_path}")
         except Exception as exc:
             print(f"[WARNING] Failed to generate enhancement report: {exc}")
     else:
         print("[WARNING] Test dataset is empty, skipping enhanced output export.")
+
+    return model, device
+
+
+def main():
+    args = parse_args()
+    project_root = PROJECT_ROOT
+
+    config_path = resolve_config_path(args.config, project_root)
+    config = load_config(config_path)
+
+    data_cfg = config.get("data", {})
+    categories = data_cfg.get("categories", [])
+    base_data_dir = args.data_dir if args.data_dir is not None else data_cfg.get("data_dir")
+
+    base_output_dir = args.output_dir if args.output_dir is not None else config.get("runtime", {}).get("output_dir")
+    if base_output_dir is not None and not Path(base_output_dir).is_absolute():
+        base_output_dir = str((project_root / base_output_dir).resolve())
+
+    if categories and base_data_dir:
+        # ── Multi-category mode ──────────────────────────────────────
+        for category in categories:
+            print(f"\n{'#' * 60}")
+            print(f"#  Category: {category}")
+            print(f"{'#' * 60}")
+
+            cat_data_dir = str((project_root / base_data_dir / category).resolve())
+            cat_output_dir = str(Path(base_output_dir) / category) if base_output_dir else None
+
+            _run_single_category(config, cat_data_dir, cat_output_dir, project_root)
+    else:
+        # ── Single-category mode (original behavior) ─────────────────
+        data_dir = base_data_dir
+        if data_dir is not None and not Path(data_dir).is_absolute():
+            data_dir = str((project_root / data_dir).resolve())
+
+        _run_single_category(config, data_dir, base_output_dir, project_root)
 
 
 if __name__ == "__main__":

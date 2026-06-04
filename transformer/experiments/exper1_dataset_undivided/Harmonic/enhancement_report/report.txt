@@ -1,0 +1,27 @@
+Speech Enhancement Evaluation Report
+============================================================
+
+Output directory: /home/yangchen/git_clone/mvdr-based-on-multi-arm-spiral-array/transformer/experiments/exper1_dataset_undivided/Harmonic/enhancement_report
+Number of samples requested: 10
+Generated spectrograms: 10
+
+Average Metrics:
+------------------------------------------------------------
+  MSE                           : 0.0808
+  SNR_before (dB)               : 6.7594
+  SNR_after (dB)                : 8.2184
+  SNR_Improvement (dB)          : 1.4590
+------------------------------------------------------------
+
+Per-sample Metrics:
+------------------------------------------------------------
+Sample   1: MSE=0.0781, SNR_before=7.90dB, SNR_after=9.09dB, Improvement=1.19dB
+Sample   2: MSE=0.1001, SNR_before=3.28dB, SNR_after=5.17dB, Improvement=1.89dB
+Sample   3: MSE=0.0731, SNR_before=7.54dB, SNR_after=9.01dB, Improvement=1.47dB
+Sample   4: MSE=0.0838, SNR_before=7.06dB, SNR_after=8.33dB, Improvement=1.27dB
+Sample   5: MSE=0.0983, SNR_before=2.81dB, SNR_after=4.99dB, Improvement=2.18dB
+Sample   6: MSE=0.0866, SNR_before=6.10dB, SNR_after=7.61dB, Improvement=1.51dB
+Sample   7: MSE=0.0676, SNR_before=9.02dB, SNR_after=10.16dB, Improvement=1.14dB
+Sample   8: MSE=0.0992, SNR_before=3.96dB, SNR_after=5.64dB, Improvement=1.68dB
+Sample   9: MSE=0.0255, SNR_before=14.58dB, SNR_after=15.37dB, Improvement=0.80dB
+Sample  10: MSE=0.0960, SNR_before=5.34dB, SNR_after=6.81dB, Improvement=1.47dB
