@@ -22,6 +22,8 @@ Usage:
 
 # step 2: Train Neural Networks
 
+`train_classifier.py`
+
 ```bash
 cd classification
 python train_classifier.py                  # train all models
@@ -36,10 +38,10 @@ Models are trained in order of recommendation priority for small datasets:
 
     1. SVM (RBF kernel)        — often best for small, structured data
     2. Random Forest            — robust, handles noise well
-    3. XGBoost                  — great for tabular data
-    4. LDA                      — great if classes are linearly separable
-    5. MLP (small)              — with strong regularization
-    6. Transfer Learning (CNN)  — treats spectrograms as images
+    3. LDA                      — great if classes are linearly separable
+    4. MLP (small)              — with strong regularization
+    5. Transfer Learning (CNN)  — treats spectrograms as images
+    6. EfficientNet(B0)             — pre-trained CNN for image classification
 
 Metrics computed:
 

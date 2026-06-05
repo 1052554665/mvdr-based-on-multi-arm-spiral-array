@@ -9,7 +9,8 @@ Models are trained in order of recommendation priority for small datasets:
     3. XGBoost                  — great for tabular data
     4. LDA                      — great if classes are linearly separable
     5. MLP (small)              — with strong regularization
-    6. Transfer Learning (CNN)  — treats spectrograms as images
+    6. Transfer Learning (ResNet18)   — pretrained CNN, frozen vs fine-tuned
+    7. EfficientNet-B0          — 3-phase: feature extraction → partial unfreeze → eval
 
 Metrics computed:
     TOP-1 Accuracy, Precision, Recall, F1-score, G-Mean,
@@ -1136,6 +1137,87 @@ class SpectrogramClassifier(nn.Module):
         return self.classifier(features)
 
 
+# ===================================================================
+# 7. EfficientNet-B0  —  3-phase fine-tuning
+# ===================================================================
+class EfficientNetB0Classifier(nn.Module):
+    """EfficientNet-B0 backbone → custom classifier head for 1-channel input.
+
+    The pretrained features are grouped into stages.  During Phase 2 we
+    unfreeze only the last few stages to avoid catastrophic forgetting on
+    a small dataset.
+    """
+
+    # Stage boundaries in torchvision's efficientnet_b0 features Sequential.
+    # Index 0 = stem conv, 1..7 = MBConv stages, 8 = final Conv+BN+SiLU.
+    _FEATURES_TOTAL = 9   # features[0] … features[8]
+
+    def __init__(self, num_classes, freeze_backbone=True):
+        super().__init__()
+        weights = tv_models.EfficientNet_B0_Weights.IMAGENET1K_V1
+        self.backbone = tv_models.efficientnet_b0(weights=weights)
+
+        # --- Replace first conv to accept 1 channel instead of 3 ---
+        old_conv = self.backbone.features[0][0]
+        new_conv = nn.Conv2d(
+            1, old_conv.out_channels,
+            kernel_size=old_conv.kernel_size,
+            stride=old_conv.stride,
+            padding=old_conv.padding,
+            bias=(old_conv.bias is not None),
+        )
+        with torch.no_grad():
+            new_conv.weight.copy_(old_conv.weight.mean(dim=1, keepdim=True))
+        self.backbone.features[0][0] = new_conv
+
+        # --- Replace classifier head ---
+        in_features = self.backbone.classifier[1].in_features  # 1280
+        self.backbone.classifier = nn.Identity()
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(in_features, 256),
+            nn.SiLU(inplace=True),
+            nn.Dropout(0.4),
+            nn.Linear(256, num_classes),
+        )
+
+        # --- Freeze / partial-freeze ---
+        if freeze_backbone:
+            self._set_backbone_requires_grad(False)
+            # Unfreeze the new conv1 so it can adapt
+            for p in self.backbone.features[0].parameters():
+                p.requires_grad = True
+
+    def _set_backbone_requires_grad(self, requires_grad: bool):
+        for p in self.backbone.parameters():
+            p.requires_grad = requires_grad
+
+    def unfreeze_last_stages(self, num_stages: int = 3):
+        """Unfreeze the last *num_stages* MBConv stages (features[6..8] by default).
+
+        EfficientNet-B0 features layout (torchvision):
+            features[0]  — stem Conv2d + BN + SiLU
+            features[1]  — MBConv stage 1  (1 block)
+            features[2]  — MBConv stage 2  (2 blocks)
+            features[3]  — MBConv stage 3  (2 blocks)
+            features[4]  — MBConv stage 4  (3 blocks)
+            features[5]  — MBConv stage 5  (3 blocks)
+            features[6]  — MBConv stage 6  (4 blocks)
+            features[7]  — MBConv stage 7  (1 block)
+            features[8]  — final Conv2d + BN + SiLU
+        """
+        start_idx = max(1, self._FEATURES_TOTAL - num_stages)
+        for idx in range(start_idx, self._FEATURES_TOTAL):
+            for p in self.backbone.features[idx].parameters():
+                p.requires_grad = True
+
+    def forward(self, x):
+        features = self.backbone.features(x)
+        features = self.backbone.avgpool(features)
+        features = torch.flatten(features, 1)
+        return self.classifier(features)
+
+
 def _resize_batch(batch):
     return nn.functional.interpolate(batch, size=(224, 224), mode="bilinear", align_corners=False)
 
@@ -1301,6 +1383,241 @@ def train_transfer_learning(X_train_img, y_train, X_val_img, y_val, X_test_img, 
 
 
 # ===================================================================
+# 7. EfficientNet-B0  —  3-phase fine-tuning
+# ===================================================================
+def _build_diff_param_groups(model, head_lr, backbone_lr):
+    """Create per-layer parameter groups for differential learning rates.
+
+    Parameters in ``model.classifier`` get ``head_lr``; all other trainable
+    parameters get ``backbone_lr``.
+    """
+    head_ids = {id(p) for p in model.classifier.parameters()}
+    head_params = []
+    backbone_params = []
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        if id(p) in head_ids:
+            head_params.append(p)
+        else:
+            backbone_params.append(p)
+
+    groups = []
+    if head_params:
+        groups.append({"params": head_params, "lr": head_lr})
+    if backbone_params:
+        groups.append({"params": backbone_params, "lr": backbone_lr})
+    return groups
+
+
+class EarlyStopping:
+    """Stop training when validation loss stops improving."""
+
+    def __init__(self, patience=7, min_delta=1e-4):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_loss = float("inf")
+        self.counter = 0
+        self.should_stop = False
+
+    def step(self, val_loss):
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+            return True  # improved
+        self.counter += 1
+        if self.counter >= self.patience:
+            self.should_stop = True
+        return False  # did not improve
+
+
+def train_efficientnet(X_train_img, y_train, X_val_img, y_val, X_test_img, y_test, class_names):
+    """3-phase fine-tuning of EfficientNet-B0.
+
+    Phase 1 — Feature Extraction (epochs  1–10)
+        Freeze ALL pretrained layers, train only the new classifier head.
+        Higher LR: 1e-3.
+
+    Phase 2 — Partial Unfreezing (epochs 11–30)
+        Unfreeze last 3 MBConv stages.
+        Differential LR: head=1e-4, backbone=1e-5.
+
+    Phase 3 — Evaluation
+        Early stopping (patience=8) monitors validation loss.
+    """
+    print("\n" + "=" * 60)
+    print("7. EfficientNet-B0 (3-Phase Fine-Tuning)")
+    print("=" * 60)
+
+    if not HAS_TORCH or not HAS_TORCHVISION:
+        print("  [SKIP] PyTorch / torchvision not installed.")
+        return None
+
+    # Check EfficientNet is available in this torchvision version
+    try:
+        _ = tv_models.EfficientNet_B0_Weights.IMAGENET1K_V1
+    except AttributeError:
+        print("  [SKIP] EfficientNet not available in this torchvision version "
+              "(requires torchvision >= 0.11).")
+        return None
+
+    num_classes = len(class_names)
+
+    # --- Tensors ---
+    X_train_t = torch.tensor(X_train_img, dtype=torch.float32)
+    y_train_t = torch.tensor(y_train, dtype=torch.long)
+    X_val_t = torch.tensor(X_val_img, dtype=torch.float32)
+    y_val_t = torch.tensor(y_val, dtype=torch.long)
+    X_test_t = torch.tensor(X_test_img, dtype=torch.float32)
+    y_test_t = torch.tensor(y_test, dtype=torch.long)
+
+    train_ds = TensorDataset(X_train_t, y_train_t)
+    val_ds = TensorDataset(X_val_t, y_val_t)
+    train_loader = DataLoader(train_ds, batch_size=16, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
+
+    criterion = nn.CrossEntropyLoss()
+    history: dict[str, list[float]] = {
+        "train_loss": [], "val_loss": [], "train_acc": [], "val_acc": [],
+    }
+
+    # ---- Build model ----
+    torch.manual_seed(SEED)
+    model = EfficientNetB0Classifier(num_classes, freeze_backbone=True).to(DEVICE)
+
+    # ==================================================================
+    # Phase 1 — Feature Extraction (epochs 1–10)
+    # ==================================================================
+    print("\n  [Phase 1] Feature Extraction (epochs  1–10)")
+    print("            Freeze backbone → train classifier head only,  lr=1e-3")
+
+    optimizer = optim.AdamW(model.classifier.parameters(), lr=1e-3, weight_decay=1e-3)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+    early_stop = EarlyStopping(patience=8)
+
+    for epoch in range(1, 11):
+        tr_loss, tr_acc = _train_epoch_cnn(model, train_loader, optimizer, criterion)
+        va_loss, va_acc, va_prob, va_lab = _eval_epoch_cnn(model, val_loader, criterion)
+        scheduler.step()
+
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["val_loss"].append(va_loss)
+        history["val_acc"].append(va_acc)
+
+        improved = early_stop.step(va_loss)
+        marker = " *" if improved else ""
+        print(f"    Epoch {epoch:2d}:  tr_loss={tr_loss:.4f}  va_loss={va_loss:.4f}  "
+              f"va_acc={va_acc:.4f}{marker}")
+        if early_stop.should_stop:
+            print(f"    Early stopping at epoch {epoch}")
+            break
+
+    # ==================================================================
+    # Phase 2 — Partial Unfreezing (epochs 11–30)
+    # ==================================================================
+    print("\n  [Phase 2] Partial Unfreezing (epochs 11–30)")
+    print("            Unfreeze last 3 stages → differential LR:  head=1e-4,  backbone=1e-5")
+
+    model.unfreeze_last_stages(num_stages=3)
+    param_groups = _build_diff_param_groups(model, head_lr=1e-4, backbone_lr=1e-5)
+    optimizer = optim.AdamW(param_groups, weight_decay=1e-3)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
+    early_stop = EarlyStopping(patience=8)
+
+    for epoch in range(11, 31):
+        tr_loss, tr_acc = _train_epoch_cnn(model, train_loader, optimizer, criterion)
+        va_loss, va_acc, va_prob, va_lab = _eval_epoch_cnn(model, val_loader, criterion)
+        scheduler.step()
+
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["val_loss"].append(va_loss)
+        history["val_acc"].append(va_acc)
+
+        improved = early_stop.step(va_loss)
+        marker = " *" if improved else ""
+        print(f"    Epoch {epoch:2d}:  tr_loss={tr_loss:.4f}  va_loss={va_loss:.4f}  "
+              f"va_acc={va_acc:.4f}{marker}")
+        if early_stop.should_stop:
+            print(f"    Early stopping at epoch {epoch}")
+            break
+
+    # ---- Retrain best config on train+val combined for final eval ----
+    print("\n  [Final] Retraining best strategy on train+val combined...")
+
+    X_combined = torch.cat([X_train_t, X_val_t], dim=0)
+    y_combined = torch.cat([y_train_t, y_val_t], dim=0)
+    combined_ds = TensorDataset(X_combined, y_combined)
+    combined_loader = DataLoader(combined_ds, batch_size=16, shuffle=True)
+
+    # Rebuild and repeat the 2-phase protocol on combined data
+    torch.manual_seed(SEED)
+    final_model = EfficientNetB0Classifier(num_classes, freeze_backbone=True).to(DEVICE)
+
+    # Phase 1 on combined: 15 epochs
+    opt = optim.AdamW(final_model.classifier.parameters(), lr=1e-3, weight_decay=1e-3)
+    sched = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=15)
+    for epoch in range(15):
+        _train_epoch_cnn(final_model, combined_loader, opt, criterion)
+        sched.step()
+
+    # Phase 2 on combined: 25 epochs with differential LR
+    final_model.unfreeze_last_stages(num_stages=3)
+    pg = _build_diff_param_groups(final_model, head_lr=1e-4, backbone_lr=1e-5)
+    opt = optim.AdamW(pg, weight_decay=1e-3)
+    sched = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=25)
+    for epoch in range(25):
+        _train_epoch_cnn(final_model, combined_loader, opt, criterion)
+        sched.step()
+
+    # ---- Test ----
+    final_model.eval()
+    with torch.no_grad():
+        logits = final_model(_resize_batch(X_test_t.to(DEVICE)))
+        y_prob_test = torch.softmax(logits, dim=1).cpu().numpy()
+        y_pred_test = logits.argmax(dim=1).cpu().numpy()
+
+    test_metrics = evaluate_model(y_test, y_pred_test, y_prob_test, class_names)
+    print_metrics("Test", test_metrics)
+
+    # Parameter count & FLOPs
+    params_info = count_torch_params(final_model)
+    print(f"  Trainable params: {params_info['trainable_params']:,}, "
+          f"Total params: {params_info['total_params']:,}")
+    flops_info = estimate_torch_flops(final_model, (1, 1, 224, 224))
+    print(f"  FLOPs (forward): {flops_info.get('total', 'N/A'):,}")
+
+    # Save model
+    model_path = RESULTS_DIR / "efficientnet_b0_model.pt"
+    torch.save({
+        "state_dict": final_model.state_dict(),
+        "num_classes": num_classes,
+        "strategy": "3-phase: feature-extraction → partial-unfreeze",
+    }, model_path)
+    print(f"  Model saved to {model_path}")
+
+    # Plot loss / accuracy curves
+    plot_loss_accuracy_curves(history, "EfficientNet-B0 (3-Phase)",
+                              save_path=RESULTS_DIR / "efficientnet_b0_loss_accuracy.png")
+
+    return {
+        "model": "EfficientNet-B0 (3-Phase)",
+        "test": test_metrics,
+        "best_params": {
+            "phase1_lr": 1e-3,
+            "phase2_head_lr": 1e-4,
+            "phase2_backbone_lr": 1e-5,
+            "unfrozen_stages": 3,
+            "early_stopping_patience": 8,
+        },
+        "param_info": params_info,
+        "flops": flops_info,
+        "history": history,
+    }
+
+
+# ===================================================================
 # K-Fold Cross-Validation evaluation  (with std over folds)
 # ===================================================================
 def run_kfold_cv(X_train, y_train, model_fn, model_name, n_folds=5, class_names=None):
@@ -1361,7 +1678,7 @@ def main():
     parser.add_argument("--data-dir", type=str, default=str(DATA_DIR))
     parser.add_argument("--results-dir", type=str, default=str(RESULTS_DIR))
     parser.add_argument("--models", type=str, nargs="+",
-                        default=["svm", "rf", "xgb", "lda", "mlp", "transfer"])
+                        default=["svm", "rf", "xgb", "lda", "mlp", "transfer", "efficientnet"])
     parser.add_argument("--use-cv", action="store_true")
     parser.add_argument("--cv-folds", type=int, default=5)
     parser.add_argument("--no-pca", action="store_true")
@@ -1479,6 +1796,7 @@ def main():
         "lda": (train_lda, True),
         "mlp": (train_mlp, False),
         "transfer": (train_transfer_learning, False),
+        "efficientnet": (train_efficientnet, False),
     }
     if "all" in args.models:
         args.models = list(model_registry.keys())
@@ -1488,15 +1806,15 @@ def main():
         if fn is None:
             print(f"\n[WARNING] Unknown model: {model_name}. Skipping.")
             continue
-        if model_name == "transfer" and args.skip_transfer:
-            print("\n[SKIP] Transfer learning skipped (--skip-transfer).")
+        if model_name in ("transfer", "efficientnet") and args.skip_transfer:
+            print(f"\n[SKIP] {model_name} skipped (--skip-transfer).")
             continue
 
         t0 = time.time()
         if model_name == "mlp":
             result = fn(X_train_pp, y_train, X_val_pp, y_val, X_test_pp, y_test,
                         class_names, use_cv=args.use_cv, cv_folds=args.cv_folds)
-        elif model_name == "transfer":
+        elif model_name in ("transfer", "efficientnet"):
             result = fn(X_train_img, y_train, X_val_img, y_val, X_test_img, y_test,
                         class_names)
         else:

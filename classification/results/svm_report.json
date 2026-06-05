@@ -70,5 +70,5 @@
     "effective_params": 4104
   },
   "flops": "N/A (non-parametric inference)",
-  "train_time_sec": 2.77437424659729
+  "train_time_sec": 2.5667014122009277
 }
