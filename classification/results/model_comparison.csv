@@ -1,7 +1,0 @@
-model,top1_accuracy,precision_macro,recall_macro,f1_macro,g_mean,roc_auc_macro,roc_auc_weighted,train_time_sec,best_params,trainable_params,total_params,flops_forward
-SVM (RBF),1.0,1.0,1.0,1.0,1.0,1.0,1.0,2.5667014122009277,"{'C': 100, 'gamma': 'scale', 'kernel': 'rbf'}",4104,N/A,N/A (non-parametric inference)
-Random Forest,1.0,1.0,1.0,1.0,1.0,1.0,1.0,15.924014329910278,"{'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}",9652,N/A,N/A
-LDA,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.04379558563232422,{'shrinkage': None},118,N/A,N/A
-MLP (Small),1.0,1.0,1.0,1.0,1.0,1.0,1.0,3.784374475479126,"{'hidden_dims': (64, 32), 'dropout': 0.3, 'lr': 0.001, 'weight_decay': 0.001}",4900,4900,9892
-Transfer Learning (ResNet18),1.0,1.0,1.0,1.0,1.0,1.0,1.0,14.525787115097046,{'freeze_backbone': True},8529220,11302596,3484787204
-EfficientNet-B0 (3-Phase),1.0,1.0,1.0,1.0,1.0,1.0,1.0,10.887743711471558,"{'phase1_lr': 0.001, 'phase2_head_lr': 0.0001, 'phase2_backbone_lr': 1e-05, 'unfrozen_stages': 3, 'early_stopping_patience': 8}",3485056,4335936,791334212

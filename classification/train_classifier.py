@@ -428,44 +428,264 @@ def estimate_torch_flops(model, input_shape, device=None):
 # ===================================================================
 # Visualization
 # ===================================================================
-def plot_tsne(X, y, class_names, title="t-SNE Embedding of Spectrogram Features",
-              save_path=None):
-    """Plot 2D t-SNE of the feature space."""
-    if not HAS_PLOTTING:
-        print("\n[SKIP] matplotlib/seaborn not available for t-SNE.")
-        return
+def plot_tsne(X, y, class_names, title="t-SNE Embedding",
+              save_path=None, ax=None, pred_labels=None):
+    """Plot 2D t-SNE of a feature space.
 
-    print("\n  Computing t-SNE embedding...")
-    # Subsample if too large
+    Parameters
+    ----------
+    X : (N, D) array  — feature vectors.
+    y : (N,) array    — ground-truth integer labels.
+    class_names : list[str]
+    title : str
+    save_path : Path or None  — if given, save the figure.
+    ax : matplotlib Axes or None  — if given, draw into this subplot.
+    pred_labels : (N,) array or None  — if given, overlay a second row
+        of scatter points showing predicted labels (useful for sklearn
+        models that operate directly on input space).
+    """
+    if not HAS_PLOTTING:
+        return None
+
     max_samples = 1000
     if X.shape[0] > max_samples:
         rng = np.random.RandomState(SEED)
         idx = rng.choice(X.shape[0], max_samples, replace=False)
         X_sub, y_sub = X[idx], y[idx]
+        pred_sub = pred_labels[idx] if pred_labels is not None else None
     else:
         X_sub, y_sub = X, y
+        pred_sub = pred_labels
 
     tsne = TSNE(n_components=2, random_state=SEED, perplexity=min(30, X_sub.shape[0] - 1))
     X_2d = tsne.fit_transform(X_sub)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
     colors = sns.color_palette("husl", len(class_names))
+
+    # --- Determine layout ---
+    nrows = 2 if pred_sub is not None else 1
+    own_fig = ax is None
+    if own_fig:
+        fig, axes = plt.subplots(nrows, 1, figsize=(8, 5 * nrows))
+        if nrows == 1:
+            axes = [axes]
+        fig.suptitle(title, fontsize=13, fontweight="bold")
+    else:
+        axes = [ax] if nrows == 1 else [ax, None]  # placeholder — see below
+
+    # --- Row 1: true labels ---
+    ax0 = axes[0]
     for i, name in enumerate(class_names):
         mask = y_sub == i
-        ax.scatter(X_2d[mask, 0], X_2d[mask, 1], c=[colors[i]], label=name,
-                   alpha=0.7, edgecolors="k", linewidth=0.3, s=40)
-    ax.set_title(title, fontsize=13, fontweight="bold")
-    ax.set_xlabel("t-SNE 1")
-    ax.set_ylabel("t-SNE 2")
-    ax.legend(loc="best", fontsize=9)
+        ax0.scatter(X_2d[mask, 0], X_2d[mask, 1], c=[colors[i]], label=name,
+                    alpha=0.7, edgecolors="k", linewidth=0.3, s=30)
+    ax0.set_title("True Labels" if pred_sub is not None else title, fontsize=10)
+    ax0.set_xlabel("t-SNE 1")
+    ax0.set_ylabel("t-SNE 2")
+    ax0.legend(loc="best", fontsize=7)
+
+    # --- Row 2: predicted labels (if given) ---
+    if pred_sub is not None:
+        if own_fig:
+            ax1 = axes[1]
+        else:
+            # We need a second subplot — this case is handled by
+            # plot_tsne_per_model which passes a pre-created ax pair.
+            return X_2d, y_sub, pred_sub  # deferred to caller
+        for i, name in enumerate(class_names):
+            mask = pred_sub == i
+            ax1.scatter(X_2d[mask, 0], X_2d[mask, 1], c=[colors[i]],
+                        alpha=0.7, edgecolors="k", linewidth=0.3, s=30)
+        ax1.set_title("Predicted Labels", fontsize=10)
+        ax1.set_xlabel("t-SNE 1")
+        ax1.set_ylabel("t-SNE 2")
+
+    if own_fig:
+        fig.tight_layout()
+        if save_path is None:
+            save_path = RESULTS_DIR / "tsne_embedding.png"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  t-SNE saved to {save_path}")
+
+    return None
+
+
+def _extract_model_features(model, model_name, X, X_img=None, device=None):
+    """Extract a feature representation from a trained model for t-SNE.
+
+    Returns
+    -------
+    features : (N, D) ndarray  — feature vectors for t-SNE.
+    predictions : (N,) ndarray or None
+    is_learned : bool  — True if features come from a learned embedding.
+    """
+    if device is None:
+        device = DEVICE
+
+    # -- LDA: has a proper learned transform --
+    if model_name == "LDA":
+        try:
+            feats = model.transform(X)
+            preds = model.predict(X)
+            return feats, preds, True
+        except Exception:
+            pass
+
+    # -- PyTorch models: extract penultimate / backbone features --
+    if model_name in ("MLP (Small)", "Transfer Learning (ResNet18)",
+                       "EfficientNet-B0 (3-Phase)"):
+        try:
+            model.eval()
+            if model_name == "MLP (Small)":
+                # model.net is Sequential; penultimate is net[-2] (before final Linear)
+                X_t = torch.tensor(X, dtype=torch.float32).to(device)
+                penultimate = model.net[:-1]  # all layers except final Linear
+                with torch.no_grad():
+                    feats = penultimate(X_t).cpu().numpy()
+                    logits = model.net(X_t)
+                    preds = logits.argmax(dim=1).cpu().numpy()
+                return feats, preds, True
+            else:
+                # CNN models (ResNet18 / EfficientNet-B0)
+                X_t = torch.tensor(X_img if X_img is not None else X, dtype=torch.float32)
+                # Resize if needed
+                if X_t.shape[-2:] != (224, 224):
+                    X_t = nn.functional.interpolate(
+                        X_t, size=(224, 224), mode="bilinear", align_corners=False,
+                    )
+                X_t = X_t.to(device)
+                with torch.no_grad():
+                    logits = model(X_t)
+                    preds = logits.argmax(dim=1).cpu().numpy()
+                    # For ResNet18: model.backbone(x) gives features
+                    # For EfficientNet: model.backbone.features + avgpool + flatten
+                    if hasattr(model, "backbone"):
+                        if hasattr(model.backbone, "features"):
+                            # EfficientNet
+                            f = model.backbone.features(X_t)
+                            f = model.backbone.avgpool(f)
+                            feats = torch.flatten(f, 1).cpu().numpy()
+                        else:
+                            # ResNet18
+                            feats = model.backbone(X_t).cpu().numpy()
+                    else:
+                        feats = X_t.cpu().numpy().reshape(X_t.shape[0], -1)
+                return feats, preds, True
+        except Exception as e:
+            pass  # fall through to input-features fallback
+
+    # -- Sklearn models without learned embedding (SVM, RF, XGBoost) --
+    # Return input features + predictions so we can color by predicted labels.
+    try:
+        preds = model.predict(X)
+        return X, preds, False
+    except Exception:
+        return X, None, False
+
+
+def plot_tsne_per_model(all_results, X_test_pp, X_test_img, y_test, class_names,
+                        results_dir=None):
+    """Grid of t-SNE plots — one row per trained model.
+
+    - Models with learned embeddings (LDA, MLP, CNNs): t-SNE of the
+      learned feature space, colored by true labels.
+    - Models without (SVM, RF, XGBoost): t-SNE of input features, with
+      two rows (true labels / predicted labels) to show model behaviour.
+    """
+    if not HAS_PLOTTING:
+        return
+
+    valid = [r for r in all_results if r is not None]
+    if not valid:
+        return
+
+    # Build feature representations for each model
+    entries = []
+    for r in valid:
+        mname = r["model"]
+        print(f"  Extracting features for {mname} ...")
+
+        # Get the fitted model object
+        model = r.get("_fitted_model", None)
+
+        # For PyTorch models stored in _fitted_model, use them directly
+        # (they've already been moved to CPU in the training function)
+        feats, preds, is_learned = _extract_model_features(
+            model, mname, X_test_pp, X_test_img,
+        )
+        entries.append({
+            "name": mname,
+            "features": feats,
+            "predictions": preds,
+            "is_learned": is_learned,
+        })
+
+    # ---- Plot grid ----
+    n = len(entries)
+    cols = min(3, n)
+    rows = (n + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(5.5 * cols, 5 * rows),
+                              squeeze=False)
+    colors = sns.color_palette("husl", len(class_names))
+
+    for idx, entry in enumerate(entries):
+        r, c = idx // cols, idx % cols
+        ax = axes[r, c]
+
+        X = entry["features"]
+        y = y_test[:len(X)] if len(y_test) >= len(X) else np.tile(y_test, 2)[:len(X)]
+        preds = entry["predictions"]
+        is_learned = entry["is_learned"]
+
+        # Subsample
+        max_samples = 500
+        if X.shape[0] > max_samples:
+            rng = np.random.RandomState(SEED)
+            sub_idx = rng.choice(X.shape[0], max_samples, replace=False)
+            X_sub = X[sub_idx]
+            y_sub = y[sub_idx]
+            pred_sub = preds[sub_idx] if preds is not None else None
+        else:
+            X_sub, y_sub = X, y
+            pred_sub = preds
+
+        tsne = TSNE(n_components=2, random_state=SEED,
+                    perplexity=min(30, X_sub.shape[0] - 1))
+        X_2d = tsne.fit_transform(X_sub)
+
+        for i, name in enumerate(class_names):
+            mask = y_sub == i
+            ax.scatter(X_2d[mask, 0], X_2d[mask, 1], c=[colors[i]], label=name,
+                       alpha=0.7, edgecolors="k", linewidth=0.3, s=35)
+
+        subtitle = f"{entry['name']}"
+        if is_learned:
+            subtitle += "\n(learned embedding)"
+        else:
+            subtitle += "\n(input space)"
+        ax.set_title(subtitle, fontsize=10, fontweight="bold")
+        ax.set_xlabel("t-SNE 1")
+        ax.set_ylabel("t-SNE 2")
+        if idx == 0:
+            ax.legend(loc="best", fontsize=6)
+
+    # Hide unused
+    for idx in range(n, rows * cols):
+        r, c = idx // cols, idx % cols
+        axes[r, c].set_visible(False)
+
+    fig.suptitle("t-SNE — Per-Model Feature Representations (colored by true labels)",
+                 fontsize=14, fontweight="bold")
     fig.tight_layout()
 
-    if save_path is None:
-        save_path = RESULTS_DIR / "tsne_embedding.png"
+    save_path = (results_dir or RESULTS_DIR) / "tsne_per_model.png"
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  t-SNE saved to {save_path}")
+    print(f"\nt-SNE per model saved to {save_path}")
 
 
 def plot_confusion_matrices(all_results, class_names):
@@ -677,6 +897,7 @@ def train_svm(X_train, y_train, X_val, y_val, X_test, y_test, class_names,
         "best_params": grid.best_params_,
         "param_info": params_info,
         "flops": "N/A (non-parametric inference)",
+        "_fitted_model": best_model,
     }
 
 
@@ -751,6 +972,7 @@ def train_random_forest(X_train, y_train, X_val, y_val, X_test, y_test, class_na
         "best_params": grid.best_params_,
         "param_info": params_info,
         "flops": "N/A",
+        "_fitted_model": best_model,
     }
 
 
@@ -821,6 +1043,7 @@ def train_xgboost(X_train, y_train, X_val, y_val, X_test, y_test, class_names,
         "best_params": grid.best_params_,
         "param_info": params_info,
         "flops": "N/A",
+        "_fitted_model": best_model,
     }
 
 
@@ -902,12 +1125,14 @@ def train_lda(X_train, y_train, X_val, y_val, X_test, y_test, class_names,
     params_info = count_sklearn_params(best_lda if not use_cv else lda, "LDA", X_train.shape[1])
     print(f"  Effective params: {params_info.get('effective_params', 'N/A')}")
 
+    fitted = best_lda if not use_cv else lda
     return {
         "model": "LDA",
         "test": test_metrics,
         "best_params": {"shrinkage": best_shrinkage},
         "param_info": params_info,
         "flops": "N/A",
+        "_fitted_model": fitted,
     }
 
 
@@ -1092,6 +1317,7 @@ def train_mlp(X_train, y_train, X_val, y_val, X_test, y_test, class_names,
         "param_info": params_info,
         "flops": flops_info,
         "history": best_history,
+        "_fitted_model": final_model.cpu(),
     }
 
 
@@ -1379,6 +1605,7 @@ def train_transfer_learning(X_train_img, y_train, X_val_img, y_val, X_test_img, 
         "param_info": params_info,
         "flops": flops_info,
         "history": best_history,
+        "_fitted_model": final_model.cpu(),
     }
 
 
@@ -1614,6 +1841,7 @@ def train_efficientnet(X_train_img, y_train, X_val_img, y_val, X_test_img, y_tes
         "param_info": params_info,
         "flops": flops_info,
         "history": history,
+        "_fitted_model": final_model.cpu(),
     }
 
 
@@ -1827,10 +2055,11 @@ def main():
             print(f"\n  Training time: {elapsed:.1f}s")
             all_results.append(result)
 
-            # Save individual report
+            # Save individual report (strip non-serializable _fitted_model)
             report_path = results_dir / f"{model_name}_report.json"
+            report_data = {k: v for k, v in result.items() if k != "_fitted_model"}
             with open(report_path, "w") as f:
-                json.dump(result, f, indent=2, default=str)
+                json.dump(report_data, f, indent=2, default=str)
 
     # ---- Comparison summary ----
     print("\n" + "=" * 60)
@@ -1913,6 +2142,10 @@ def main():
         # Plots
         plot_confusion_matrices(valid_results, class_names)
         plot_model_comparison(valid_results)
+
+        # Per-model t-SNE grid (learned embeddings & input-space views)
+        plot_tsne_per_model(valid_results, X_test_pp, X_test_img,
+                           y_test, class_names, results_dir)
     else:
         print("No models were successfully trained.")
 
