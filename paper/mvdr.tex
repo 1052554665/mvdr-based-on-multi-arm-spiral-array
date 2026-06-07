@@ -31,8 +31,13 @@
 
 
 \begin{document}
-	\title{MVDR Beamforming Based and Dual-channel Transformer Network for Acoustic Fault Diagnosis}
-	
+	\title{Wideband MVDR Beamforming and Dual-Channel Transformer Network for Acoustic Fault Diagnosis}
+    
+    % \title{Microphone Array MVDR Beamforming with Dual-Channel Transformer for Acoustic Fault Diagnosis}
+    
+    % \title{Joint Spatial Filtering and Deep Feature Learning for Acoustic Fault Diagnosis}
+    
+
 	\author{Zonglong Bai, Chen Yang}
 	
 	\maketitle
@@ -267,6 +272,11 @@ where $s_{\text{tar}}(t)$ and $s_{\text{int}}(t)$ are target and interference si
 
 To focus analysis on relevant frequencies and reduce computational load, the frequency range is limited from 0 to 8kHz. The paramenters for the STFT are chosen to balance time and frequency resolution, with a Hamming window of 512 points, 50\% overlap (256 samples), and an FFT length of 1024 points. This configuration provides sufficient frequency resolution to analyze the spectral characteristics of the target and interference signals while maintaining temporal resolution for effective beamforming.
 
+\section{Dual-channel Transformer Network}
+\label{Transformer Network}
+
+Following MVDR preprocessing, the time-frequency representation (spectrogram) of beamformed signals is converted into a dataset suitable for training deep neural networks. 
+
 \section{Experimental Design and Simulation Results}
 \label{experiments}
 \subsection{Experiment Setup}
@@ -477,6 +487,9 @@ preserving the 4 kHz interference component.}
 \label{Signal_comparison_spectrograms_input_vs_mvdr}
 \end{figure*}
 
+\subsubsection{SINR}
+
+
 \subsection{Simulation 2: Acoustic Signals}
 We also conducted a experiment using real acoustic signals recorded from power transformer equipment. The target and interference signal are fault and normal signature captured from transformers, respectively. The Gauss white noise is adopted to simulate real background. Both signals are convolved with their respective RIRs to generate multichannel received signals at the microphone array. The spectral characteristics of the real signals are more complex than the narrowband sinusoids, with the target signal exhibiting multiple frequency components associated with the fault condition. The interference signal has a wideband spectrum, overlapping with the target signal frequencies, as shown in the PSD plot in Fig. \ref{fig:real_signal_configuration}. This scenario provides a realistic test case for evaluating the MVDR beamforming performance in enhancing the target fault signature while suppressing broadband interference in a practical acoustic environment.
 \begin{figure}
@@ -536,6 +549,104 @@ The beampattern is shown in Fig. \ref{fig:beampattern}. The epsilon value for di
 \end{figure}
 
 
+\subsection{Fault Diagnosis and Performance Metrics}
+
+
+
+\subsubsection{Ablation Experiment}
+
+\subsubsection{Comparison Experiment}
+
+To establish a comprehensive benchmark, we evaluate several classical machine learning and deep learning models on the MVDR-enhanced spectrogram dataset. Table~\ref{tab:model_comparison} summarizes the classification performance and computational complexity of each model.
+
+\begin{table*}[htbp]
+\centering
+\caption{Model Performance Comparison on MVDR-Enhanced Spectrogram Dataset}
+\label{tab:model_comparison}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Train Time (s)} & \textbf{Trainable Params} \\
+\midrule
+SVM (RBF)      & 1.000 & 1.000 & 1.000 & 1.000 & 2.48  & 4,104 \\
+Random Forest  & 1.000 & 1.000 & 1.000 & 1.000 & 15.71 & 9,652 \\
+LDA            & 1.000 & 1.000 & 1.000 & 1.000 & 0.04  & 118 \\
+MLP (Small)    & 1.000 & 1.000 & 1.000 & 1.000 & 3.87  & 4,900 \\
+Transfer Learning (ResNet18) & 1.000 & 1.000 & 1.000 & 1.000 & 14.45 & 8,529,220 \\
+EfficientNet-B0 (3-Phase)    & 1.000 & 1.000 & 1.000 & 1.000 & 10.81 & 3,485,056 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+All models achieve perfect classification on the test set. Table~\ref{tab:confusion_matrix} presents the aggregated confusion matrix, which is identical across all evaluated models. The dataset comprises four fault classes: DCBias (13 samples), Harmonic (13 samples), Loosen (14 samples), and PartialDischarge (14 samples), totaling 54 test samples. Table~\ref{tab:per_class_metrics} reports the per-class precision, recall, and F1-score. The hyperparameter configurations obtained via grid search for each model are summarized in Table~\ref{tab:hyperparameters}.
+
+\begin{table}[htbp]
+\centering
+\caption{Per-Class Classification Metrics (Identical for All Models)}
+\label{tab:per_class_metrics}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Fault Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\midrule
+DCBias            & 1.00 & 1.00 & 1.00 & 13 \\
+Harmonic          & 1.00 & 1.00 & 1.00 & 13 \\
+Loosen            & 1.00 & 1.00 & 1.00 & 14 \\
+PartialDischarge  & 1.00 & 1.00 & 1.00 & 14 \\
+\midrule
+Macro Avg         & 1.00 & 1.00 & 1.00 & 54 \\
+Weighted Avg      & 1.00 & 1.00 & 1.00 & 54 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[htbp]
+\centering
+\caption{Optimal Hyperparameter Configurations}
+\label{tab:hyperparameters}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ll}
+\toprule
+\textbf{Model} & \textbf{Best Hyperparameters} \\
+\midrule
+SVM (RBF)      & $C=100$, $\gamma=\text{scale}$, kernel=RBF \\
+Random Forest  & $n\_\text{estimators}=100$, $\text{max\_depth}=\text{None}$, $\text{max\_features}=\log_2$, \\
+               & $\text{min\_samples\_leaf}=1$, $\text{min\_samples\_split}=2$ \\
+LDA            & $\text{shrinkage}=\text{None}$ \\
+MLP (Small)    & $\text{hidden\_dims}=(64, 32)$, $\text{dropout}=0.3$, $\text{lr}=0.001$, \\
+               & $\text{weight\_decay}=0.001$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}
+\centering
+\includegraphics[width=1\linewidth]{results/confusion_matrices}
+\caption{}
+\label{}
+\end{figure*}
+
+\begin{figure*}
+\centering
+\includegraphics[width=1\linewidth]{results/efficientnet_b0_loss_accuracy}
+\caption{}
+\label{}
+\end{figure*}
+
+\begin{figure*}
+\centering
+\includegraphics[width=1\linewidth]{results/mlp_loss_accuracy.png}
+\caption{}
+\label{}
+\end{figure*}
+
+\begin{figure*}
+\centering
+\includegraphics[width=1\linewidth]{results/tsne_embedding}
+\includegraphics[width=1\linewidth]{results/tsne_per_model}
+\caption{}
+\label{}
+\end{figure*}
 
 
 
@@ -611,103 +722,79 @@ The beampattern is shown in Fig. \ref{fig:beampattern}. The epsilon value for di
 % \end{enumerate}
 
 
-\section{Fault Diagnosis Based on Dual-channel Transformer Network}
-\label{Transformer Network}
-
-Following MVDR preprocessing, the time-frequency representation (spectrogram) of beamformed signals is converted into a dataset suitable for training deep neural networks.
 
 
+% \subsection{Network Architecture and Training Strategy}
 
+% \subsubsection{Convolutional Neural Network for Feature Extraction}
 
+% A convolutional neural network (CNN) is employed for automatic feature extraction from spectrograms:
+% \begin{itemize}
+%     \item \textbf{Input}: Time-frequency spectrograms from MVDR-processed signals
+%     \item \textbf{Architecture}: 
+%         - Multiple convolutional layers with ReLU activation
+%         - Max-pooling layers for dimension reduction
+%         - Batch normalization for stable training
+%         - Dropout layers for regularization
+%     \item \textbf{Feature Maps}: Progressive increase in feature dimensionality
+%     \item \textbf{Output}: Flattened feature vector for classification
+% \end{itemize}
 
+% \subsubsection{Fully Connected Classification Layers}
 
+% Extracted features are processed through fully connected layers:
+% \begin{itemize}
+%     \item \textbf{Hidden Layers}: Multiple dense layers with dropout regularization
+%     \item \textbf{Activation}: ReLU for hidden layers, softmax for output layer
+%     \item \textbf{Output Neurons}: Corresponds to number of fault classes
+% \end{itemize}
 
+% \subsubsection{Training Procedure}
 
+% Training parameters and strategy:
+% \begin{itemize}
+%     \item \textbf{Loss Function}: Cross-entropy loss
+%     \item \textbf{Optimizer}: Adam with adaptive learning rate
+%     \item \textbf{Batch Size}: Configurable (typically 32 or 64)
+%     \item \textbf{Epochs}: Training until convergence with early stopping
+%     \item \textbf{Validation}: 20\% of training data reserved for validation
+%     \item \textbf{Data Augmentation}: Spectral masking and time shifting for robustness
+% \end{itemize}
 
+% \subsection{Fault Classes and Data Preparation}
 
+% The training dataset includes spectrograms from different fault conditions:
+% \begin{enumerate}
+%     \item Normal operation (baseline)
+%     \item Bearing wear/degradation
+%     \item Winding faults
+%     \item Mechanical imbalance
+%     \item [Additional fault types as applicable]
+% \end{enumerate}
 
+% Each class consists of multiple recordings under varying environmental conditions and noise levels.
 
+% \subsection{Performance Metrics and Evaluation}
 
+% \subsubsection{Classification Metrics}
 
+% Model performance is evaluated using:
+% \begin{itemize}
+%     \item \textbf{Accuracy}: Overall correct classification rate
+%     \item \textbf{Precision}: Fraction of positive predictions that are true positives
+%     \item \textbf{Recall}: Fraction of actual positives correctly identified
+%     \item \textbf{F1-Score}: Harmonic mean of precision and recall
+%     \item \textbf{Confusion Matrix}: Detailed breakdown of classification results
+% \end{itemize}
 
+% \subsubsection{Robustness Analysis}
 
-
-
-
-
-
-
-\subsection{Network Architecture and Training Strategy}
-
-\subsubsection{Convolutional Neural Network for Feature Extraction}
-
-A convolutional neural network (CNN) is employed for automatic feature extraction from spectrograms:
-\begin{itemize}
-    \item \textbf{Input}: Time-frequency spectrograms from MVDR-processed signals
-    \item \textbf{Architecture}: 
-        - Multiple convolutional layers with ReLU activation
-        - Max-pooling layers for dimension reduction
-        - Batch normalization for stable training
-        - Dropout layers for regularization
-    \item \textbf{Feature Maps}: Progressive increase in feature dimensionality
-    \item \textbf{Output}: Flattened feature vector for classification
-\end{itemize}
-
-\subsubsection{Fully Connected Classification Layers}
-
-Extracted features are processed through fully connected layers:
-\begin{itemize}
-    \item \textbf{Hidden Layers}: Multiple dense layers with dropout regularization
-    \item \textbf{Activation}: ReLU for hidden layers, softmax for output layer
-    \item \textbf{Output Neurons}: Corresponds to number of fault classes
-\end{itemize}
-
-\subsubsection{Training Procedure}
-
-Training parameters and strategy:
-\begin{itemize}
-    \item \textbf{Loss Function}: Cross-entropy loss
-    \item \textbf{Optimizer}: Adam with adaptive learning rate
-    \item \textbf{Batch Size}: Configurable (typically 32 or 64)
-    \item \textbf{Epochs}: Training until convergence with early stopping
-    \item \textbf{Validation}: 20\% of training data reserved for validation
-    \item \textbf{Data Augmentation}: Spectral masking and time shifting for robustness
-\end{itemize}
-
-\subsection{Fault Classes and Data Preparation}
-
-The training dataset includes spectrograms from different fault conditions:
-\begin{enumerate}
-    \item Normal operation (baseline)
-    \item Bearing wear/degradation
-    \item Winding faults
-    \item Mechanical imbalance
-    \item [Additional fault types as applicable]
-\end{enumerate}
-
-Each class consists of multiple recordings under varying environmental conditions and noise levels.
-
-\subsection{Performance Metrics and Evaluation}
-
-\subsubsection{Classification Metrics}
-
-Model performance is evaluated using:
-\begin{itemize}
-    \item \textbf{Accuracy}: Overall correct classification rate
-    \item \textbf{Precision}: Fraction of positive predictions that are true positives
-    \item \textbf{Recall}: Fraction of actual positives correctly identified
-    \item \textbf{F1-Score}: Harmonic mean of precision and recall
-    \item \textbf{Confusion Matrix}: Detailed breakdown of classification results
-\end{itemize}
-
-\subsubsection{Robustness Analysis}
-
-Robustness under adverse conditions:
-\begin{itemize}
-    \item Performance under varying SNR levels
-    \item Generalization to unseen environmental conditions
-    \item Stability against sensor variations or microphone degradation
-\end{itemize}
+% Robustness under adverse conditions:
+% \begin{itemize}
+%     \item Performance under varying SNR levels
+%     \item Generalization to unseen environmental conditions
+%     \item Stability against sensor variations or microphone degradation
+% \end{itemize}
 
 \section{Conclusions}
 \label{conclusion}
