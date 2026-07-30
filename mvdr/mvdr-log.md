@@ -1,45 +1,11 @@
-- create a script to recollect the `mvdr/output/batch_pairwise` folder, the collected directory tree is as follows:
-
-```
-mvdr/data/collected_batch_pairwise
-├── DCBias
-│   └── clean (all figures named as `interference_with_target.png` from subfolders)
-│       └── interference_with_target.png
-│       └── interference_with_target.png
-│       └── ....
-│   └── noise (all figures named as `target_with_interference.png` from subfolders)
-│       └── target_with_interference.png
-│       └── target_with_interference.png
-│       └── ....
-├── Harmonic
-│   └── clean 
-│       └── interference_with_target.png
-│       └── interference_with_target.png
-│       └── ....
-│   └── noise
-│       └── target_with_interference.png
-│       └── target_with_interference.png
-│       └── ....
-├── Loosen
-│   └── clean 
-│       └── interference_with_target.png
-│       └── interference_with_target.png
-│       └── ....
-│   └── noise
-│       └── target_with_interference.png
-│       └── target_with_interference.png
-│       └── ....
-└── PartialDischarge
-        └── clean 
-                └── interference_with_target.png
-                └── interference_with_target.png
-                └── ....
-        └── noise
-                └── target_with_interference.png
-                └── target_with_interference.png
-                └── ....
-```
-
-```bash
-bash scripts/recollect_batch_pairwise.sh
-```
+for the real experiment, the required equipments are as follow:
+- 128 channel microphone array
+- tripod
+- desk
+- PC
+- cable
+- two loudspeaker
+The microphone array is fixed, and the louderspeaker can be locates at different positions, including different height and distance
+- room dimension 10*5*5
+- array center (5, 2.5, 2.5)
+- louderspeaker (0, 0, 0), (10, 5, 5)

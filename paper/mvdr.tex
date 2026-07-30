@@ -1,4 +1,4 @@
-\documentclass[lettersize,journal]{IEEEtran}
+\documentclass[journal]{IEEEtran}
 \usepackage{amsmath,amsfonts}
 \usepackage{algorithmic}
 \usepackage{array}
@@ -27,21 +27,14 @@
 \usepackage{subcaption} 
 \geometry{margin=1in}
 
-
-
-
 \begin{document}
 	\title{Wideband MVDR Beamforming and Dual-Channel Transformer Network for Acoustic Fault Diagnosis}
-    
     % \title{Microphone Array MVDR Beamforming with Dual-Channel Transformer for Acoustic Fault Diagnosis}
     
     % \title{Joint Spatial Filtering and Deep Feature Learning for Acoustic Fault Diagnosis}
-    
-
 	\author{Zonglong Bai, Chen Yang}
-	
+
 	\maketitle
-	
 	\begin{abstract}
 		This paper presents a novel approach for fault diagnosis using microphone array-based MVDR beamforming combined with deep learning. The method utilizes a microphone array to capture acoustic signals from faulty equipment. Room impulse responses (RIR) are employed to accurately model the acoustic propagation environment and achieve precise signal enhancement while suppressing interference. Wideband MVDR beamforming is implemented to perform joint spatial-frequency filtering. A dual-channel transformer network is introduced to further improve the classification performance. Experimental results demonstrate a significant improvement in Signal-to-Interference-plus-Noise Ratio (SINR) of 22.66 dB in strong interference environments, and the classification accuracy is also significantly improved. The proposed method shows great potential for real-world fault diagnosis applications in noisy industrial environments.
 	\end{abstract}
@@ -50,14 +43,10 @@
 		Fault diagnosis, microphone array, beamforming, dual-channel Transformer network, acoustic signal processing
 	\end{IEEEkeywords}
 
-
 \section{Introduction}
-
 Fault diagnosis is crucial for maintaining system reliability and preventing catastrophic failures. Traditional diagnostic methods rely primarily on vibration analysis and electrical parameter monitoring. However, acoustic signal analysis offers distinct advantages, particularly for non-destructive and non-contact testing. Acoustic emissions from faulty equipment contain rich frequency components that correlate strongly with internal fault conditions.
 
 The challenge in acoustic fault diagnosis lies in extracting target fault signals from noisy acoustic environments. Single-channel approaches suffer from poor signal-to-noise ratio (SNR), especially in environments with background noise and interfering signals. Microphone array-based techniques provide spatial filtering capability that can significantly enhance target signals while suppressing interference.
-
-
 
 The contributions of this paper are summarized as follows:
 \begin{itemize}
@@ -72,7 +61,6 @@ This paper presents an integrated approach combining:
     \item 
     \item 
 \end{enumerate}
-
 
 The rest of this paper is organized as follows: Section~\ref{Beamforming} reviews classical MVDR theory and wideband extension. Section~\ref{stftfd} presents the proposed STFT-FD approach and its integration with multi-arm spiral array geometry. Section~\ref{experiments} presents extensive simulation results validating the algorithm performance. Section~\ref{Transformer Network} applies Dual-channel transformer network for fault diagnosis. Finally, Section~\ref{conclusion} concludes the paper.
 \section{Beamforming Theory}
@@ -123,11 +111,9 @@ Using the method of Lagrange multipliers, the optimal MVDR weight vector is obta
 \end{equation}
 
 \subsection{Wideband MVDR Beamforming}
-
 Since practical fault signals are predominantly wideband with complex frequency contents, and steering vectors vary with frequency, narrowband MVDR is insufficient. The frequency-domain implementation of wideband MVDR is the most practical approach: transform the time-domain wideband signal to the frequency domain using STFT, apply narrowband MVDR at each frequency bin independently, and then synthesize the wideband output using inverse STFT (ISTFT).
 
 \subsubsection{Wideband Time-Domain Signal Model}
-
 The wideband desired signal $s(t)$ from direction $\theta_0$ is received by an $M$-element uniform array. The time-domain received signal vector is:
 \begin{equation}
 \boldsymbol{x}(t) = s(t) * \boldsymbol{a}(\theta_0, t) + \sum_{k=1}^{K} i_k(t)\boldsymbol{a}(\theta_k, t) + \boldsymbol{n}(t)
@@ -141,7 +127,6 @@ a_{m}(\theta_0, f) = e^{j(m-1)\frac{2\pi f}{c}d\sin\theta_0}
 where $c$ is the propagation speed.
 
 \subsubsection{Short-Time Fourier Transform (STFT)}
-
 To process signals in the frequency domain, STFT is applied to the discrete time-domain signal. The signal is divided into overlapping frames of length $L$ with overlap $D$. Each frame is windowed:
 \begin{equation}
 \boldsymbol{x}_{p,w}(n) = \boldsymbol{x}_p(n) \cdot w(n)
@@ -153,21 +138,18 @@ The $N$-point FFT is applied to obtain the frequency-domain representation at fr
 \end{equation}
 
 \subsubsection{Frequency-Domain Covariance Matrix Estimation}
-
 At each frequency bin $f_k$, the covariance matrix is estimated from multiple frames:
 \begin{equation}
 \boldsymbol{R}_{xx}(k) = \frac{1}{P} \sum_{p=1}^{P} \boldsymbol{X}_p(k)\boldsymbol{X}_p^H(k)
 \end{equation}
 
 \subsubsection{Frequency-Domain MVDR Weight Computation}
-
 For each frequency bin $f_k$, the optimal weight vector is computed as:
 \begin{equation}
 \boldsymbol{w}_{(k)} = \frac{\boldsymbol{R}_{xx}^{-1}(k)\boldsymbol{a}(\theta_0,k)}{\boldsymbol{a}^H(\theta_0,k)\boldsymbol{R}_{xx}^{-1}(k)\boldsymbol{a}(\theta_0,k)}
 \end{equation}
 
 \subsubsection{Beamforming Output and ISTFT Synthesis}
-
 The frequency-domain beamforming output is:
 \begin{equation}
 Y_p(k) = \boldsymbol{w}^H(k) \cdot \boldsymbol{X}_p(k)
@@ -206,7 +188,6 @@ Sampling at frequency $f_s$ satisfying the Nyquist criterion ($f_s \geq 2f_H$) y
 \end{equation}
 
 \subsection{Frequency-Dependent STFT (STFT-FD)}
-
 The standard STFT exhibits the uncertainty principle trade-off between time and frequency resolution. To address this, we propose STFT-FD where the window size is frequency-dependent.
 
 Define a window with time index $n$ starting from 1, and parameter $NW(f)$ representing the number of samples in the window. For sampling interval $T_s$, the frequency corresponding to $p$ samples per period is:
@@ -262,7 +243,6 @@ f &\in \left\{ \frac{\text{NC}}{N_S \cdot T_s}, \dots, \frac{1}{2 \cdot T_s} \ri
 The advantage of STFT-FD is that low frequencies obtain longer analysis windows (better frequency resolution) while high frequencies obtain shorter windows (better time resolution), optimally adapting to signal characteristics across the frequency spectrum.
 
 \subsection{Received Signal Model}
-
 The received signal at the $m$-th channel is:
 \begin{equation}
 x_{m}(t) = s_{\text{tar}}(t) \ast h_{t,m}(t) + \alpha \, s_{\text{int}}(t) \ast h_{i,m}(t) + n_m(t)
@@ -274,7 +254,6 @@ To focus analysis on relevant frequencies and reduce computational load, the fre
 
 \section{Dual-channel Transformer Network}
 \label{Transformer Network}
-
 Following MVDR preprocessing, the time-frequency representation (spectrogram) of beamformed signals is converted into a dataset suitable for training deep neural networks. 
 
 \section{Experimental Design and Simulation Results}
@@ -353,8 +332,6 @@ exhibits three dominant eigenvalues that exceed the 1\% significance threshold, 
 noise floor. By restricting the MVDR signal subspace to M = 2 principal eigenvalues, the proposed method effectively suppresses the reverberation component while preserving the target and interference spatial signatures, resulting in a well-conditioned inverse covariance matrix.
 
 
-
-
 \begin{figure}
 \centering
 \includegraphics[width=1\linewidth]{output/demo_2k_4k/figures/Eigenvalue_detailed_analysis}
@@ -374,14 +351,14 @@ As shown in Fig. \ref{multi_beta_comparison},the eigenvalue distribution exhibit
 \begin{figure}
 \centering
 \includegraphics[width=1\linewidth]{output/demo_2k_4k/multi_beta_comparison/Eigenspectra_fullband_comparison}
-\caption{Covariance eigenspectra of the composite received signal as functions of wall reflection coefficient β. Eigenvalues are regularized with diagonal loading. The curves demonstrate the progressive deterioration of signal-to-noise eigenvalue separation with increasing room reverberation.}
+\caption{Covariance eigenspectra of the composite received signal as functions of wall reflection coefficient $\beta$. Eigenvalues are regularized with diagonal loading. The curves demonstrate the progressive deterioration of signal-to-noise eigenvalue separation with increasing room reverberation.}
 \label{multi_beta_comparison}
 \end{figure}
 
 
 The performance metrics presented in Fig. \ref{Performance_metrics_vs_beta} characterize the MVDR beamformer's effectiveness across a range of acoustic environments. Fig. \ref{Performance_metrics_vs_beta}(a) demonstrates that the target-steered configuration achieves SNR improvements exceeding 15 dB in low-reverberation conditions, degrading gracefully to approximately 7 dB at high reflection coefficients. This degradation is primarily attributed to multipath decorrelation of the signal steering vector, which violates the assumptions underlying MVDR's optimal performance.
 
-The condition number evolution presented in Fig. \ref{Performance_metrics_vs_beta}(c) provides critical insight into the numerical stability requirements across the parameter space. The exponential growth of $\kappa$ from approximately 700 (anechoic) to over 600,000 (highly reverberant) necessitates adaptive diagonal loading strategies. Specifically, the regularization parameter ε must be increased from $10^{-4}$ to $10^{-2}$ to maintain weight vector stability, as determined empirically through singular value inspection.
+The condition number evolution presented in Fig. \ref{Performance_metrics_vs_beta}(c) provides critical insight into the numerical stability requirements across the parameter space. The exponential growth of $\kappa$ from approximately 700 (anechoic) to over 600,000 (highly reverberant) necessitates adaptive diagonal loading strategies. Specifically, the regularization parameter $\epsilon$ must be increased from $10^{-4}$ to $10^{-2}$ to maintain weight vector stability, as determined empirically through singular value inspection.
 
 
 The interplay between SNR gain and condition number, illustrated in Fig. \ref{Performance_metrics_vs_beta}(a) and (c), reveals the fundamental trade-off in beamformer design. Aggressive regularization required for numerical stability introduces biasing that reduces adaptive suppression capability. This compromise between adaptation and robustness becomes increasingly critical as reverberation intensity increases, suggesting that fixed MVDR configurations are insufficient for deployment in highly reverberant venues.
@@ -392,7 +369,7 @@ Fig. \ref{Performance_metrics_vs_beta}(b) shows that interference-steered branch
 \begin{figure}
 \centering
 \includegraphics[width=1\linewidth]{output/demo_2k_4k/multi_beta_comparison/Performance_metrics_vs_beta}
-\caption{MVDR beamforming performance metrics as functions of wall reflection coefficient β. (a) SNR improvement (ΔSNR) for target-steered and interference-steered configurations, showing degradation with increasing reverberation. (b) Beampattern main lobe width (3 dB beamwidth) at 2 kHz, indicating broadening due to multipath effects. (c) Interference suppression level at 4 kHz, demonstrating reduced null depth with increasing β.}
+\caption{MVDR beamforming performance metrics as functions of wall reflection coefficient $\beta$. (a) SNR improvement for target-steered and interference-steered configurations, showing degradation with increasing reverberation. (b) Beampattern main lobe width (3 dB beamwidth) at 2 kHz, indicating broadening due to multipath effects. (c) Interference suppression level at 4 kHz, demonstrating reduced null depth with increasing $\beta$.}
 \label{Performance_metrics_vs_beta}
 \end{figure}
 
