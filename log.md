@@ -1,35 +1,37 @@
->merge the content from `transformer/README.md` into the root `README.md` and update it if necessary.
+> Update the README according the following statement and add some experimental results and figures for presentation, also remove the power transformer background.
 
 
-**Merged README.md → root README.md** with the following structure:
+The pipeline of this research are as follows:
 
-| Section | Content |
-|---------|---------|
-| **Title & Pipeline** | New project title + Mermaid flowchart showing the full pipeline |
-| **Project Structure** | Unified directory tree covering all 3 modules |
-| **Quick Start** | All original commands preserved (data generation, recollect, split, train) |
-| **Module 1: MVDR** | Key features, usage, and file descriptions for the MATLAB beamforming module |
-| **Module 2: Transformer** | Full content from README.md — architecture, 3 suppression modes, training, data processing, evaluation metrics, visual quality guide |
-| **Module 3: Classification** | Expanded with dataset classes table, model recommendation priority, and metrics definitions |
-| **Paper & Docs** | Cross-references to all documentation files |
+- The target source A and source B are processed by wideband MVDR, separately, to obtain the enhanced source A but with residual interference from source B, which can be called A1, and the enhanced source B but with residual interference from source A, which can be called B1.
+- The enhanced sources are then feeded into a deep neural network (DNN) for further enhancement, which aims to suppress the residual interference and improve the overall quality of the sources, finally producing the final enhanced target sources A.
+- The activate function is designed to achieve A1 minus B1.
 
-Key improvements:
-- Added a **pipeline diagram** showing the end-to-end workflow
-- Added a **Table of Contents** for navigation
-- Preserved all original commands and notes from both files
-- Added the **fault class labels table** and **model comparison table** for the classification module
-- The original README.md is left intact as module-level documentation
+### Changes Summary
 
-Made changes.
+**1. Pipeline Rewrite (A₁ − B₁)**
+- Title changed from "Acoustic Fault Diagnosis" → "Acoustic Source Separation"
+- Pipeline now clearly describes: Source A & B → separate MVDR → A₁ (enhanced A + residual B), B₁ (enhanced B + residual A) → Dual-Branch Transformer → **A₁ − B₁ activation** → Final enhanced A
+- Added two new mermaid diagrams illustrating the full pipeline
+- Added "Core Insight: A₁ − B₁ Activation" section explaining the mathematical intuition
 
-> also state the problem, method, key result (with figures).
+**2. Power Transformer Background Removed**
+- Removed all "power equipment", "industrial environments" references
+- Problem statement now focuses on multi-source acoustic separation in reverberant environments
+- Classification module description updated to "acoustic fault diagnosis"
 
-| Section | Content |
-|---------|---------|
-| **Problem** | Two fundamental challenges: spatial interference (poor SINR in industrial environments) and spectrogram-level residual noise that degrades classification |
-| **Method** | 3-stage pipeline diagram (Mermaid) + innovation table — MVDR spatial filtering → Dual-Branch Transformer enhancement → 6-model classification |
-| **Key Results** | SINR improvement **+22.66 dB** from MVDR; **100% classification accuracy** across all 6 models (54-sample test set, stratified); 6 key figures referenced with descriptions (confusion matrices, model comparison, t-SNE, training curves) |
+**3. Experimental Results Added**
+- **Transformer Enhancement SNR table**: per-class SNR before/after with Δ SNR (DC Bias: +1.54 dB, Harmonic: +1.46 dB, Loosen: +1.28 dB, Partial Discharge: +1.80 dB)
+- **MVDR Beamforming Figures section**: 9 figure references (beampattern, PSD, eigenspectra, β sweep, spectrograms)
+- **Transformer Enhancement Spectrograms**: location of per-class comparison PNGs
+- **System Setup section**: experiment configuration table, equipment list, system diagrams
 
-All figures are linked from results (confirmed existing in the repo) and the results table is populated from actual model_comparison.csv data.
+**4. Module Updates**
+- Module 1 (MVDR): Added pipeline description showing separate steering for A and B
+- Module 2 (Transformer): Complete rewrite with A₁ − B₁ activation function math, "Why This Works" table, updated mermaid diagram
+- Updated component descriptions table for the new architecture
+- Updated project structure to include results, output, drawing
 
-Made changes.
+>do not present metrics since the results are preliminary and may not reflect the final performance. you can display figure 1 to 11 in `mvdr.tex`as placeholders for the presentation, but please note that these figures are for illustrative purposes only and do not represent final results.
+
+>the figures are same with the ones in `mvdr.tex`
